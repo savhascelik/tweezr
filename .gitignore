@@ -26,10 +26,9 @@ models/
 *.bin
 *.onnx
 
-# Frontend bağımlılıkları ve build çıktısı. Sunucu web/dist'i servis ediyor ama
-# derlenen şeyi commit etmiyoruz.
+# web/ build adımı olmadan servis ediliyor, yani orada derlenmiş çıktı YOK ve
+# hepsi commit ediliyor. Bunlar sadece ileride bir araç eklenirse diye duruyor.
 node_modules/
-web/dist/
 dist/
 
 # SQLite oturum defteri. scratch/ altında ama açıkça yazıyoruz: bu dosya

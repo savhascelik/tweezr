@@ -54,8 +54,13 @@ SESSION_DB = Path(os.environ.get("SESSION_DB", APP_ROOT / "scratch" / "sessions.
 # Yerel medya. Üretimde GCS signed URL'e geçecek.
 MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", APP_ROOT / "scratch" / "media"))
 
-# Frontend build çıktısı. Tek origin: aynı sunucu hem API'yi hem sayfayı veriyor.
-STATIC_DIR = Path(os.environ.get("STATIC_DIR", APP_ROOT / "web" / "dist"))
+# Frontend. Tek origin: aynı sunucu hem API'yi hem sayfayı veriyor.
+#
+# Build adımı YOK, o yüzden burası doğrudan kaynak dizini. Bilinçli karar: bu
+# arayüzde bir bundler'ın çözdüğü problem yok, karşılığında Cloud Run imajından
+# node aşaması ve npm tedarik zinciri tamamen kalkıyor. Depoyu okuyan da servis
+# edilen dosyanın aynısını görüyor.
+STATIC_DIR = Path(os.environ.get("STATIC_DIR", APP_ROOT / "web"))
 
 
 def costs() -> dict[str, int]:

@@ -11,6 +11,7 @@ test_queries.py ile aynı desen: pytest yok, düz script. Bağımlılık eklemiy
 
 from __future__ import annotations
 
+import json
 import tempfile
 import threading
 from pathlib import Path
@@ -20,7 +21,17 @@ from . import config
 # Testler gerçek oturum defterine dokunmasın. init_db'den ÖNCE değiştirilmeli.
 config.SESSION_DB = Path(tempfile.mkdtemp(prefix="cinema-test-")) / "sessions.db"
 
+# Testler kendi ClickHouse projesini kuruyor. Önceden "demo"da ne varsa ona
+# bakıyorlardı ve dev/seed_demo o veriyi değiştirince üç test düştü — yani testler
+# hermetik değildi. Artık kontrat fixture'ını ayrı bir projeye yazıyoruz.
+API_TEST_PROJECT = "__api_test__"
+config.ALLOWED_PROJECTS = frozenset({config.DEMO_PROJECT, API_TEST_PROJECT})
+
 from fastapi.testclient import TestClient  # noqa: E402
+
+from pipeline import db as ch  # noqa: E402
+from pipeline import ingest as ingest_module  # noqa: E402
+from pipeline import queries  # noqa: E402
 
 from . import sessions  # noqa: E402
 from .main import create_app  # noqa: E402
@@ -44,8 +55,26 @@ def check_that(name: str, condition: bool, detail: str = "") -> None:
         print(f"             {detail}")
 
 
+def seed_clickhouse():
+    """Kontrat fixture'ını izole bir projeye yazar. Hazırsa istemciyi döner."""
+    fixture = json.loads(
+        (config.APP_ROOT / "pipeline" / "fixture.json").read_text(encoding="utf-8")
+    )
+    fixture["project_id"] = API_TEST_PROJECT
+    try:
+        client = ch.connect()
+        ch.create_table(client)
+        ingest_module.ingest(client, fixture, replace=True)
+        return client
+    except Exception as error:
+        print(f"  ATLANDI    ClickHouse hazırlanamadı: {error}")
+        print("             docker compose -f dev/docker-compose.yml up -d")
+        return None
+
+
 def main() -> int:
     app = create_app()
+    clickhouse = seed_clickhouse()
 
     print("=== güvenlik header'ları ===")
     with TestClient(app) as client:
@@ -113,13 +142,16 @@ def main() -> int:
         )
 
     print("\n=== arama (ClickHouse) ===")
-    with TestClient(app) as client:
-        found = client.post("/api/find_line", json={"phrase": "I never asked for this"})
-        if found.status_code == 503:
-            print(f"  ATLANDI    ClickHouse yok: {found.json().get('detail')}")
-            print("             docker compose -f dev/docker-compose.yml up -d")
-            print("             python -m pipeline.ingest pipeline\\fixture.json --replace")
-        else:
+    if clickhouse is None:
+        print("  ATLANDI    ClickHouse yok, arama testleri koşulmadı")
+    else:
+        with TestClient(app) as client:
+            def find(**kwargs):
+                return client.post(
+                    "/api/find_line", json={"project": API_TEST_PROJECT, **kwargs}
+                )
+
+            found = find(phrase="I never asked for this")
             check("arama 200", found.status_code, 200)
             body = found.json()
             check("3 aday", len(body["candidates"]), 3)
@@ -135,20 +167,17 @@ def main() -> int:
             check_that("kaynak korundu", best["source_url"].startswith("gs://"), best["source_url"])
             check("oynatma URL'i", best["media_url"], "/media/S01_T03.mp4")
 
-            calm = client.post(
-                "/api/find_line", json={"phrase": "I never asked for this", "tone": "calm"}
-            ).json()
+            calm = find(phrase="I never asked for this", tone="calm").json()
             check("ton filtresi 1 aday", len(calm["candidates"]), 1)
             check("filtre doğru take", calm["candidates"][0]["take_id"], "S01_T03")
 
-            missing = client.post("/api/find_line", json={"phrase": "helicopter"}).json()
-            check("bulunamayan 0 aday", missing["candidates"], [])
+            check("bulunamayan 0 aday", find(phrase="helicopter").json()["candidates"], [])
 
-            word = client.get("/api/word/asked")
+            word = client.get(f"/api/word/asked?project={API_TEST_PROJECT}")
             check("kelime araması 200", word.status_code, 200)
             check("3 geçiş", word.json()["total"], 3)
 
-            stats = client.get("/api/library/stats")
+            stats = client.get(f"/api/library/stats?project={API_TEST_PROJECT}")
             check("kütüphane istatistiği", stats.json()["stats"]["takes"], 3)
 
     print("\n=== render henüz devrede değil ===")
@@ -213,6 +242,12 @@ def main() -> int:
         len(sessions.history(free_session["id"], limit=100)),
         1,  # sadece açılış bakiyesi
     )
+
+    if clickhouse is not None:
+        # Test projesini bırakmıyoruz, geliştirme kütüphanesini kirletmesin
+        clickhouse.command(
+            queries.DROP_PROJECT, parameters={"project": API_TEST_PROJECT}
+        )
 
     passed = sum(results)
     print(f"\n{passed}/{len(results)} test geçti")

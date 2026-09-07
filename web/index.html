@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Replik arama ve kaba kurgu</title>
+    <meta
+      name="description"
+      content="Kütüphanenizdeki repliği kelime bazında bulun, tona göre sıralayın, render etmeden timeline'da önerin."
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <!-- Tek kök. Arayüz tamamen JS'ten kuruluyor ve hiçbir yerde innerHTML
+         kullanılmıyor; metinlerin kaynağı Whisper çıktısı ve dosya adları, yani
+         kontrol etmediğimiz veri. -->
+    <div id="app"></div>
+
+    <noscript>
+      <p style="padding: 2rem; font: 16px system-ui">
+        Bu araç kurgu timeline'ını tarayıcıda çalıştırıyor, JavaScript gerekiyor.
+      </p>
+    </noscript>
+
+    <!-- Build adımı yok: servis edilen dosya kaynağın kendisi. Modüller native
+         ES import kullanıyor, bundler yok, node_modules yok. -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
