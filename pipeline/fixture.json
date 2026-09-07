@@ -1,0 +1,84 @@
+{
+  "_comment": "Elle yazılmış veri kontratı. Whisper pipeline'ı BU şekli üretmek zorunda. UI ve ClickHouse tarafı bunu bekliyor. word_norm burada yok, schema.normalize_word() türetiyor.",
+  "project_id": "demo",
+  "takes": [
+    {
+      "take_id": "S01_T01",
+      "scene": "S01",
+      "camera": "A",
+      "speaker": "MAYA",
+      "source_url": "gs://demo-corpus/S01_T01.mp4",
+      "lines": [
+        {
+          "line_id": 1,
+          "text": "I never asked for this",
+          "tone": "tense",
+          "tone_score": 0.88,
+          "words": [
+            { "word": "I", "start_ms": 1200, "end_ms": 1290, "confidence": 0.99 },
+            { "word": "never", "start_ms": 1330, "end_ms": 1690, "confidence": 0.98 },
+            { "word": "asked", "start_ms": 1720, "end_ms": 2100, "confidence": 0.97 },
+            { "word": "for", "start_ms": 2130, "end_ms": 2250, "confidence": 0.99 },
+            { "word": "this", "start_ms": 2280, "end_ms": 2620, "confidence": 0.98 }
+          ]
+        },
+        {
+          "line_id": 2,
+          "text": "Just let me go",
+          "tone": "tense",
+          "tone_score": 0.79,
+          "words": [
+            { "word": "Just", "start_ms": 3400, "end_ms": 3620, "confidence": 0.98 },
+            { "word": "let", "start_ms": 3660, "end_ms": 3810, "confidence": 0.99 },
+            { "word": "me", "start_ms": 3840, "end_ms": 3960, "confidence": 0.99 },
+            { "word": "go", "start_ms": 4000, "end_ms": 4380, "confidence": 0.97 }
+          ]
+        }
+      ]
+    },
+    {
+      "take_id": "S01_T03",
+      "scene": "S01",
+      "camera": "A",
+      "speaker": "MAYA",
+      "source_url": "gs://demo-corpus/S01_T03.mp4",
+      "lines": [
+        {
+          "line_id": 1,
+          "text": "I never asked for this",
+          "tone": "calm",
+          "tone_score": 0.91,
+          "words": [
+            { "word": "I", "start_ms": 800, "end_ms": 920, "confidence": 0.99 },
+            { "word": "never", "start_ms": 980, "end_ms": 1420, "confidence": 0.99 },
+            { "word": "asked", "start_ms": 1480, "end_ms": 1960, "confidence": 0.98 },
+            { "word": "for", "start_ms": 2010, "end_ms": 2160, "confidence": 0.99 },
+            { "word": "this", "start_ms": 2220, "end_ms": 2700, "confidence": 0.99 }
+          ]
+        }
+      ]
+    },
+    {
+      "take_id": "S01_T05",
+      "scene": "S01",
+      "camera": "B",
+      "speaker": "MAYA",
+      "source_url": "gs://demo-corpus/S01_T05.mp4",
+      "lines": [
+        {
+          "line_id": 1,
+          "text": "I never asked for this",
+          "tone": "whisper",
+          "tone_score": 0.84,
+          "words": [
+            { "word": "I", "start_ms": 2400, "end_ms": 2520, "confidence": 0.96 },
+            { "word": "never", "start_ms": 2580, "end_ms": 3020, "confidence": 0.95 },
+            { "word": "asked", "start_ms": 3080, "end_ms": 3520, "confidence": 0.94 },
+            { "word": "for", "start_ms": 3570, "end_ms": 3710, "confidence": 0.97 },
+            { "word": "this", "start_ms": 3760, "end_ms": 4300, "confidence": 0.95 }
+          ]
+        }
+      ]
+    }
+  ]
+}

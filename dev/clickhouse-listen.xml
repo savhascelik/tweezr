@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!--
+  Yerel geliştirme için listen adresi düzeltmesi.
+
+  25.3 imajında config.xml `127.0.0.1` ve `::1`'i açık bırakıyor. Konteynerde IPv6
+  kapalı olduğu için `[::]` bind'i "Address family for hostname not supported" ile
+  düşüyor ve sunucu sadece localhost'ta dinliyor — host'tan erişilemiyor.
+
+  replace="replace" mevcut listen_host listesini EKLEMİYOR, değiştiriyor. Ekleme
+  yapsak 0.0.0.0 ile 127.0.0.1 aynı portta çakışıyor.
+
+  Bu sadece yerel Docker içindir. Cloud Run / ClickHouse Cloud tarafında kullanılmıyor.
+-->
+<clickhouse>
+    <listen_host replace="replace">0.0.0.0</listen_host>
+</clickhouse>

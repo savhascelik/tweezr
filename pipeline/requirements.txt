@@ -1,0 +1,17 @@
+# Doğrulanmış sürümler — bu ortamda test edildi (Python 3.11.9, Windows, CPU).
+
+# Kelime bazlı zaman kodu. CPU'da çalışıyor, GPU gerekmiyor.
+faster-whisper==1.1.1
+
+# Statik ffmpeg binary'si. Sistem ffmpeg kurulumuna ihtiyaç kalmıyor.
+imageio-ffmpeg==0.5.1
+
+# faster-whisper 1.1.1 `requests`'i import ediyor ama bu ortamda geçişli olarak gelmedi.
+# Açıkça pinliyoruz, yoksa ilk çalıştırmada ModuleNotFoundError alıyorsun.
+requests==2.34.2
+
+# Ton sınıflandırması (Gemini multimodal).
+google-genai==2.22.0
+
+# ClickHouse retrieval. Track şartı: gerçekten import edilip çağrılıyor.
+clickhouse-connect==1.8.0

@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# scratch/ — üretilen her şey burada durur ve hiçbiri repoya girmez:
+# test medyası, transkript çıktıları, kesilmiş klipler, indirilen korpus.
+# Kodun ürettiği şeyi commit etmiyoruz; transcribe.py / verify_cut.py yeniden üretir.
+scratch/*
+!scratch/.gitkeep
+
+# Kimlik bilgileri. db.py ve tone.py bunları ortam değişkenlerinden okuyor,
+# hiçbiri kodda durmuyor.
+.env
+.env.*
+!.env.example
+
+# Editör ve OS gürültüsü
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Model önbelleği (yanlışlıkla proje içine inerse)
+models/
+*.bin
+*.onnx
