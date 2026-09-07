@@ -25,12 +25,18 @@ Bu depo yapım aşamasında. Bugün itibarıyla **çalışan ve test edilmiş** 
 - Farklı kayıtlardan tek tek kelime toplayıp yeni cümle kurma
 - HTTP API: anonim oturum, kredi defteri, `Origin-Agent-Cluster` header'ı,
   sıralı aday listesi, provenance alanları — 38 API testi
+- Timeline arayüzü: sanal kırpma oynatıcı (çift tampon + rAF), tıklanabilir
+  provenance şeridi, WebMCP'siz tarayıcı için elle sürülebilir panel
+- Beş WebMCP aracı: `find_line`, `propose_cut`, `preview_segment`,
+  `get_timeline_state`, `commit_render` — 57 frontend testi
 
-Kod hazır ama **doğrulanmadı**: Gemini ton sınıflandırması (canlı anahtar yok).
+Kod hazır ama **doğrulanmadı**: Gemini ton sınıflandırması (canlı anahtar yok),
+ve araçların gerçek bir ajan istemcisinde görünmesi (yerelde `document.modelContext`
+olan tarayıcı yok).
 
-Henüz **yok**: web arayüzü, timeline, WebMCP araçları, ADK ajanı, render işçisi.
+Henüz **yok**: ADK ajanı, render işçisi, onay penceresi.
 
-`pipeline/README.md` ve `server/README.md` ayrıntıları taşıyor.
+`pipeline/README.md`, `server/README.md` ve `web/README.md` ayrıntıları taşıyor.
 
 ## Neden ClickHouse
 

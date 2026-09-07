@@ -10,6 +10,7 @@ import * as api from "./api.js";
 import { createPlayer } from "./player.js";
 import * as store from "./store.js";
 import { createUI } from "./ui.js";
+import { installTools } from "./webmcp.js";
 
 const root = document.getElementById("app");
 
@@ -131,7 +132,14 @@ const player = createPlayer({
 store.subscribe((state) => ui.render(state));
 ui.render(store.getState());
 
-/** Oturum ve kütüphane hazır olunca çözülüyor. Araç kaydı bunu bekliyor. */
+/**
+ * Oturum, kütüphane VE araç kaydı tamamlanınca çözülüyor.
+ *
+ * Sıra önemli: araçlar oturum ve kütüphane hazır olduktan SONRA kaydediliyor.
+ * Geçen projede bunu atlayınca kayıt yarışı yüzünden ajan boş araç listesi görmüştü.
+ * Ayrıca araç açıklamaları kredi bakiyesini içeriyor, yani oturum bilinmeden
+ * doğru açıklama üretilemez.
+ */
 export const ready = (async () => {
   try {
     const session = await api.readSession();
@@ -140,18 +148,22 @@ export const ready = (async () => {
     const library = await api.libraryStats();
     store.patch({ library: library.stats });
 
+    const webmcp = await installTools({ actions, store });
+
     store.setStatus(
       "ok",
-      `Hazır. ${library.stats.takes} take yüklü, arama ve önizleme bedava.`
+      webmcp.available
+        ? `Hazır. ${library.stats.takes} take yüklü, ${webmcp.registered.length} WebMCP aracı kayıtlı.`
+        : `Hazır. ${library.stats.takes} take yüklü. Bu tarayıcıda WebMCP yok, paneli kullan.`
     );
+    return { actions, store, player, webmcp };
   } catch (error) {
     store.setStatus(
       "error",
-      `Sunucuya bağlanılamadı: ${error.message}. ClickHouse ayakta mı?`
+      `Başlatılamadı: ${error.message}. ClickHouse ve sunucu ayakta mı?`
     );
     throw error;
   }
-  return { actions, store, player };
 })();
 
 // WebMCP kayıt katmanı (task 4) bunları kullanacak.

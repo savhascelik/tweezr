@@ -24,8 +24,62 @@ Blueprint React diyordu; bu bilinçli bir sapma.
 | `src/api.js` | Sunucu çağrıları. Oturum çerezi HttpOnly, fetch otomatik gönderiyor. |
 | `src/player.js` | Sanal kırpma oynatıcısı. Çift tampon + rAF. |
 | `src/ui.js` | Render. `el()` yardımcısı sadece `textContent` kabul ediyor. |
+| `src/webmcp.js` | Beş WebMCP aracı. Kayıt, durum yansıması, fallback. |
 | `src/main.js` | Bağlama + `ready` promise'i. |
 | `test_web.mjs` | Testler. Bağımlılık yok, düz node. |
+
+## WebMCP araçları
+
+Klasik ajan kurgusunda ajan backend'e "şu aralıkları kes, render et" der ve MP4 geri
+döner. Yanlış take seçtiyse bunu render bittikten sonra anlarsın; backend kapalı bir
+kutudur. Burada araçlar sayfada çalışıyor, yani öneri kurgucunun ekranında, gerçek
+medyanın üstünde, her fragmentin kaynağı görünür halde beliriyor. Karar render'dan
+**önce** veriliyor.
+
+| Araç | İş | Kredi |
+| --- | --- | --- |
+| `find_line` | Repliği ara, sıralı aday döndür. Sonuçlar ekranda da görünüyor. | 0 |
+| `propose_cut` | Öneriyi timeline'a koy. Render yok, insan değiştirebilir. | 0 |
+| `preview_segment` | Adayı ya da tüm öneriyi çal. | 0 |
+| `get_timeline_state` | Timeline'ı oku — **insanın yaptığı değişiklikler dahil**. | 0 |
+| `commit_render` | Onaydan sonra dosya üret. | 1 |
+
+`get_timeline_state`'in açıklaması ajana insanın öneriyi değiştirmiş olabileceğini
+söylüyor ve `commit_render`'dan önce okumasını istiyor. HITL döngüsünü açık eden şey bu.
+
+### Doğrulanmış API yüzeyi
+
+Geçen projede gerçek bir ChatGPT in-app browser koşusunda test edildi:
+
+```js
+document.modelContext.registerTool(tool, { signal })  // native yalnızca navigator'da olabilir
+document.modelContext.getTools()                      // execute içermez
+document.modelContext.executeTool(toolObject, input)  // isim DEĞİL, obje
+```
+
+Araç adı 1-128 karakter, `[A-Za-z0-9_.-]`. `execute` düz JSON objesi döndürüyor.
+
+**`updateTool` diye bir API yok.** Açıklamayı değiştirmek için kaydı `AbortController`
+ile iptal edip yeniden kaydetmek gerekiyor — `sync()` bunu yapıyor.
+
+### Kredi bitince ajan çağırmadan öğreniyor
+
+`commit_render`'ın açıklaması kredi durumunu taşıyor. Bakiye yetmezse açıklama
+`UNAVAILABLE RIGHT NOW` ile başlıyor ve aramanın hâlâ bedava olduğunu söylüyor. Ajan
+görev ortasında hata almak yerine önceden biliyor.
+
+Bu yeniden kayıt **sadece oturum değişince** yapılıyor. Her durum değişiminde yapmak
+oynatma sırasında saniyede ~60 kez beş araç tanımı kurmak demekti; rAF döngüsü her
+karede `setPlayback` çağırıyor.
+
+### Polyfill yüklemiyoruz
+
+WebMCP yoksa araçlar kaydedilmiyor ve arayüz paneli devrede kalıyor. Ajan desteğini
+taklit etmek, desteklemeyen tarayıcıda sessizce yanlış davranış üretir.
+
+Kayıt reddedilirse sebebi konsola yazılıyor. En sık sebep `Origin-Agent-Cluster`
+header'ının eksik olması ve `SecurityError` — sunucu bu header'ı veriyor ve
+`server/test_api.py` onu test ediyor.
 
 ## Sanal kırpma nasıl çalışıyor
 
@@ -73,9 +127,19 @@ araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinlerin kaynağ�
 node web\test_web.mjs
 ```
 
-23 test: enjeksiyon disiplini, `el()` sözleşmesi, dış bağlantı `noopener`'ı, store
+57 test. Enjeksiyon disiplini, `el()` sözleşmesi, dış bağlantı `noopener`'ı, store
 timeline işlemleri, `getState`'in kopya döndürmesi, abonelik yaşam döngüsü ve bir
 abonenin hatasının diğerlerini düşürmemesi.
+
+WebMCP tarafı sahte bir `modelContext` ile test ediliyor: beş aracın kaydı, isim
+deseni, şemalar, `readOnlyHint` işaretleri, `execute` yolları, bilinmeyen aday
+kimliğinde ajana yol gösteren hata, `get_timeline_state`'in insanın çıkardığı parçayı
+yansıtması, kredi bitince açıklamanın değişmesi, yeniden kayıtta çoğalma olmaması ve
+WebMCP olmayan tarayıcıda sessizce fallback'e düşmesi.
+
+Bu testler iki gerçek hatayı yakaladı: `sync()` uçuştaki bir senkronizasyonu
+beklemeden dönüyordu (yani `await sync()` oturmuş duruma bakmayı garanti etmiyordu),
+ve abone her durum değişiminde yeniden kayıt tetikliyordu.
 
 ## Tarayıcıda elle doğrulanması gerekenler
 

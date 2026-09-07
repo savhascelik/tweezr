@@ -155,6 +155,227 @@ console.log("\n=== store ===");
   check("temizlendi", store.getState().timeline, []);
 }
 
+// --- WebMCP araçları -------------------------------------------------------
+// Sahte bir modelContext ile test ediyoruz. Geçen projede doğrulanan yüzey:
+// registerTool(tool, {signal}), aynı isme ikinci kayıt reddedilir, signal abort
+// edilince kayıt düşer. `updateTool` diye bir API yok.
+console.log("\n=== WebMCP araçları ===");
+{
+  const { installTools } = await import("./src/webmcp.js");
+  const store = await import("./src/store.js");
+  store.clearTimeline();
+
+  function fakeModelContext() {
+    const tools = new Map();
+    const rejected = [];
+    return {
+      tools,
+      rejected,
+      async registerTool(tool, { signal } = {}) {
+        if (tools.has(tool.name)) {
+          const error = new Error(`Tool '${tool.name}' is already registered.`);
+          rejected.push(tool.name);
+          throw error;
+        }
+        tools.set(tool.name, tool);
+        signal?.addEventListener("abort", () => tools.delete(tool.name), { once: true });
+      },
+      async getTools() {
+        return [...tools.values()].map(({ execute, ...rest }) => rest);
+      },
+    };
+  }
+
+  const searchCalls = [];
+  const candidate = (id, tone, start, end) => ({
+    id,
+    rank: 1,
+    take_id: id.split(":")[0],
+    line_id: 1,
+    scene: "S01",
+    camera: "A",
+    speaker: "MAYA",
+    tone,
+    tone_score: 0.9,
+    start_ms: start,
+    end_ms: end,
+    duration_ms: end - start,
+    text: "I never asked for this",
+    source_url: `${id.split(":")[0]}.wav`,
+    media_url: `/media/${id.split(":")[0]}.wav`,
+  });
+
+  const pool = [
+    candidate("S01_T03:1:0", "calm", 0, 1340),
+    candidate("S01_T01:1:0", "tense", 0, 820),
+  ];
+
+  const actions = {
+    async search({ phrase, tone }) {
+      searchCalls.push({ phrase, tone });
+      const found = tone ? pool.filter((item) => item.tone === tone) : pool;
+      store.patch({ candidates: found, query: { phrase, tone } });
+      return { phrase, tone: tone || null, total: found.length, candidates: found };
+    },
+    propose(candidates) {
+      return store.setTimeline(candidates);
+    },
+    async play() {
+      return true;
+    },
+    async preview() {
+      return true;
+    },
+    async render() {
+      return { job_id: "job-1" };
+    },
+  };
+
+  store.patch({
+    session: {
+      role: "guest",
+      credits: 10,
+      costs: { find_line: 0, propose_cut: 0, preview_segment: 0, commit_render: 1 },
+    },
+  });
+
+  const context = fakeModelContext();
+  const install = await installTools({ actions, store, modelContext: context });
+
+  check("beş araç kaydedildi", install.registered.length, 5);
+  check(
+    "araç isimleri",
+    [...context.tools.keys()].sort(),
+    ["commit_render", "find_line", "get_timeline_state", "preview_segment", "propose_cut"]
+  );
+  check("hiç kayıt reddedilmedi", context.rejected, []);
+  check("store durumu güncellendi", store.getState().webmcp, { available: true, registered: 5 });
+
+  const namePattern = /^[A-Za-z0-9_.-]{1,128}$/;
+  checkThat(
+    "isimler spec desenine uyuyor",
+    [...context.tools.keys()].every((name) => namePattern.test(name))
+  );
+  checkThat(
+    "her araç açıklama ve şema taşıyor",
+    [...context.tools.values()].every(
+      (tool) =>
+        typeof tool.description === "string" &&
+        tool.description.trim().length > 20 &&
+        tool.inputSchema?.type === "object" &&
+        typeof tool.execute === "function"
+    )
+  );
+  check(
+    "salt okunur araçlar işaretli",
+    ["find_line", "get_timeline_state"].map(
+      (name) => context.tools.get(name).annotations.readOnlyHint
+    ),
+    [true, true]
+  );
+  check(
+    "yazan araçlar salt okunur değil",
+    ["propose_cut", "commit_render"].map(
+      (name) => context.tools.get(name).annotations.readOnlyHint
+    ),
+    [false, false]
+  );
+
+  // --- execute yolları ---
+  const found = await context.tools.get("find_line").execute({ phrase: "I never asked for this" });
+  check("find_line arama yaptı", searchCalls.at(-1), {
+    phrase: "I never asked for this",
+    tone: "",
+  });
+  check("find_line iki aday döndü", found.candidates.length, 2);
+  checkThat("find_line özet cümlesi var", found.summary.includes("2 take(s)"), found.summary);
+  checkThat(
+    "aday provenance taşıyor",
+    found.candidates[0].source === "S01_T03.wav",
+    JSON.stringify(found.candidates[0])
+  );
+
+  const toneFiltered = await context.tools
+    .get("find_line")
+    .execute({ phrase: "I never asked for this", tone: "calm" });
+  check("ton filtresi tek aday", toneFiltered.candidates.length, 1);
+
+  // Aday havuzunu geri yükle
+  await context.tools.get("find_line").execute({ phrase: "I never asked for this" });
+
+  const proposed = await context.tools
+    .get("propose_cut")
+    .execute({ candidate_ids: ["S01_T03:1:0", "S01_T01:1:0"] });
+  check("propose_cut iki parça koydu", proposed.segments.length, 2);
+  check("propose_cut render etmedi", proposed.rendered, false);
+  check("timeline store'a yazıldı", store.getState().timeline.length, 2);
+  check("sıra korundu", store.getState().timeline[0].take_id, "S01_T03");
+  check("toplam süre", proposed.total_duration_ms, 1340 + 820);
+
+  // Bilinmeyen id sessizce yutulmamalı, ajana ne yapacağını söylemeli
+  let proposeError = null;
+  try {
+    await context.tools.get("propose_cut").execute({ candidate_ids: ["yok:1:0"] });
+  } catch (error) {
+    proposeError = error.message;
+  }
+  checkThat("bilinmeyen id reddedildi", proposeError !== null);
+  checkThat(
+    "hata mesajı yol gösteriyor",
+    proposeError?.includes("find_line") && proposeError?.includes("yok:1:0"),
+    proposeError
+  );
+
+  let emptyError = null;
+  try {
+    await context.tools.get("propose_cut").execute({ candidate_ids: [] });
+  } catch (error) {
+    emptyError = error.message;
+  }
+  checkThat("boş liste reddedildi", emptyError?.includes("at least one"), emptyError);
+
+  // get_timeline_state insanın değişikliğini görmeli — HITL döngüsünün kanıtı
+  store.removeFromTimeline(0);
+  const readBack = await context.tools.get("get_timeline_state").execute();
+  check("insanın çıkardığı parça yansıdı", readBack.segments.length, 1);
+  check("kalan doğru parça", readBack.segments[0].take, "S01_T01");
+  check("hâlâ render edilmedi", readBack.rendered, false);
+
+  const previewed = await context.tools
+    .get("preview_segment")
+    .execute({ candidate_id: "S01_T03:1:0" });
+  checkThat("önizleme render etmiyor", previewed.summary.includes("Nothing was rendered"), previewed.summary);
+
+  // --- Duruma göre açıklama güncellemesi ---
+  // Kredi bitince ajan çağırmadan önce öğrenmeli.
+  const before = context.tools.get("commit_render").description;
+  checkThat("kredi varken kullanılabilir", before.includes("10 left"), before);
+
+  store.patch({
+    session: { ...store.getState().session, credits: 0 },
+  });
+  await install.sync();
+
+  const after = context.tools.get("commit_render").description;
+  checkThat("kredi bitince UNAVAILABLE yazıyor", after.includes("UNAVAILABLE"), after);
+  checkThat(
+    "arama hâlâ çalışıyor deniyor",
+    after.includes("cost nothing"),
+    after
+  );
+  check("yeniden kayıtta çoğalma yok", context.tools.size, 5);
+  check("çift kayıt denemesi olmadı", context.rejected, []);
+  checkThat(
+    "bedava araçlar etkilenmedi",
+    !context.tools.get("find_line").description.includes("UNAVAILABLE")
+  );
+
+  // --- WebMCP olmayan tarayıcı ---
+  const withoutContext = await installTools({ actions, store, modelContext: null });
+  check("WebMCP yoksa patlamıyor", withoutContext.available, false);
+  check("durum kapalı işaretlendi", store.getState().webmcp.available, false);
+}
+
 const passed = results.filter(Boolean).length;
 console.log(`\n${passed}/${results.length} test geçti`);
 process.exit(passed === results.length ? 0 : 1);
