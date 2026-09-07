@@ -17,16 +17,20 @@ timeline'da öneriyor. Her parçanın altında hangi kayıt, hangi timecode.
 
 ## Şu an ne çalışıyor
 
-Bu depo yapım aşamasında. Bugün itibarıyla **çalışan ve ölçülmüş** kısım:
+Bu depo yapım aşamasında. Bugün itibarıyla **çalışan ve test edilmiş** kısım:
 
 - Medyadan kelime bazlı zaman kodu çıkarma, CPU'da, gerçek zamanın 8 katı hızda
-- ClickHouse'a ingest ve kelime/cümle araması, ton filtresiyle
+- ClickHouse'a ingest ve kelime/cümle araması, ton filtresiyle — 12 sorgu testi
 - Kelime sınırından örnek hassasiyetinde kesim ve birleştirme
 - Farklı kayıtlardan tek tek kelime toplayıp yeni cümle kurma
-- Gemini ton sınıflandırması (kod hazır, canlı anahtarla henüz doğrulanmadı)
+- HTTP API: anonim oturum, kredi defteri, `Origin-Agent-Cluster` header'ı,
+  sıralı aday listesi, provenance alanları — 38 API testi
 
-Henüz **yok**: web arayüzü, timeline, WebMCP araçları, ADK ajanı, render.
-Bkz. `pipeline/README.md`.
+Kod hazır ama **doğrulanmadı**: Gemini ton sınıflandırması (canlı anahtar yok).
+
+Henüz **yok**: web arayüzü, timeline, WebMCP araçları, ADK ajanı, render işçisi.
+
+`pipeline/README.md` ve `server/README.md` ayrıntıları taşıyor.
 
 ## Neden ClickHouse
 
@@ -54,14 +58,42 @@ yapamadığı şey. Gemini multimodal orada devrede, take başına tek çağrı.
 
 ## Kurulum
 
+Tüm komutlar bu dizinden çalışıyor.
+
 ```powershell
 python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r pipeline\requirements.txt
+
+# Sadece sunucu (Cloud Run imajının taşıdığı şey)
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# Korpus hazırlamak için transkripsiyon yığınını da ekle
+.venv\Scripts\python.exe -m pip install -r requirements-ingest.txt
+
 docker compose -f dev\docker-compose.yml up -d
 Copy-Item .env.example .env    # sonra doldur
 ```
 
-Uçtan uca çalıştırma ve doğrulama: `pipeline/README.md`.
+Bağımlılıkların ayrı olması bilinçli: `faster-whisper` + `ctranslate2` yüzlerce MB ve
+sunucuda hiç çalışmıyor. Transkripsiyon offline yapılıyor, sonuç ClickHouse'a yazılıyor,
+sunucu sadece sorguluyor.
+
+## Çalıştırma
+
+```powershell
+.venv\Scripts\python.exe -m pipeline.ingest pipeline\fixture.json --replace
+.venv\Scripts\python.exe -m uvicorn server.main:app --reload --port 8080
+```
+
+## Test
+
+```powershell
+.venv\Scripts\python.exe -m pipeline.test_queries    # 12 SQL doğruluk testi
+.venv\Scripts\python.exe -m server.test_api          # 38 API testi
+.venv\Scripts\python.exe -m doctest pipeline\schema.py
+```
+
+Uçtan uca ingest ve kesim doğrulaması: `pipeline/README.md`.
+API ve güvenlik duruşu: `server/README.md`.
 
 ## Kaynak materyal duruşu
 

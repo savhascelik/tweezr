@@ -4,21 +4,17 @@ Cümle araması ürünün kalbi. Sessizce yanlış sonuç döndürmesi en pahal�
 o yüzden her senaryo hem SQL'de hem yerel referans uygulamada koşuluyor ve
 sonuçlar karşılaştırılıyor.
 
-    python test_queries.py
+    python -m pipeline.test_queries
 
 Yerel ClickHouse gerekiyor:
-    docker compose -f ../dev/docker-compose.yml up -d
+    docker compose -f dev/docker-compose.yml up -d
 """
 
 from __future__ import annotations
 
 import sys
 
-import db
-import queries
-import schema
-import search
-import verify_cut
+from . import db, queries, schema, search, verify_cut
 
 TEST_PROJECT = "__test__"
 
@@ -116,7 +112,7 @@ def main() -> int:
         client = db.connect()
     except Exception as error:
         print(f"ClickHouse'a bağlanamadı: {error}", file=sys.stderr)
-        print("  docker compose -f ../dev/docker-compose.yml up -d", file=sys.stderr)
+        print("  docker compose -f dev/docker-compose.yml up -d", file=sys.stderr)
         return 1
 
     db.create_table(client)

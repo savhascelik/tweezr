@@ -1,0 +1,16 @@
+# Ingest yığını. Sadece korpusu hazırlarken gerekiyor, sunucuda değil.
+#
+#   pip install -r requirements.txt -r requirements-ingest.txt
+#
+# Ayrı tutmanın sebebi: faster-whisper + ctranslate2 yüzlerce MB ve Cloud Run
+# imajında hiç çalışmıyor. Transkripsiyon offline yapılıyor, sonuç ClickHouse'a
+# yazılıyor, sunucu sadece sorguluyor.
+
+-r requirements.txt
+
+# Kelime bazlı zaman kodu. CPU'da çalışıyor, GPU gerekmiyor.
+faster-whisper==1.1.1
+
+# faster-whisper 1.1.1 `requests`'i import ediyor ama bu ortamda geçişli olarak
+# gelmedi. Açıkça pinliyoruz, yoksa ilk çalıştırmada ModuleNotFoundError alıyorsun.
+requests==2.34.2

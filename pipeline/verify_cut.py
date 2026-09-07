@@ -3,9 +3,9 @@
 Sayısal rapor hizalamanın makul olduğunu söyler, ama ürünün kalitesine kulak karar veriyor.
 Kelimenin ortasından kesiyorsak kurgucu ilk oynatmada duyar.
 
-    python verify_cut.py out.json --phrase "I never asked for this"          # nerede geçiyor
-    python verify_cut.py out.json --phrase "..." --media sample.wav --cut 1  # tek parça
-    python verify_cut.py out.json --phrase "..." --media sample.wav --splice # hepsi birleşik
+    python -m pipeline.verify_cut scratch\out.json --phrase "I never asked for this"          # nerede geçiyor
+    python -m pipeline.verify_cut scratch\out.json --phrase "..." --media scratch\sample.wav --cut 1  # tek parça
+    python -m pipeline.verify_cut scratch\out.json --phrase "..." --media scratch\sample.wav --splice # hepsi birleşik
 
 --splice en önemlisi: ürünün gerçekte yaptığı şey bu. Birleşim noktaları temiz mi?
 
@@ -22,7 +22,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-import schema
+from . import schema
 
 
 def find_phrase(doc: dict, phrase: str) -> list[dict]:

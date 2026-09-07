@@ -2,7 +2,7 @@
 
 Çıktı fixture.json ile AYNI şekilde. Ton alanı boş bırakılıyor; onu Gemini geçişi dolduruyor.
 
-    python transcribe.py sample.wav --take-id S01_T01 --speaker MAYA --out out.json
+    python -m pipeline.transcribe scratch\sample.wav --take-id S01_T01 --speaker MAYA --out scratch\out.json
 
 Neden faster-whisper: bu bir hizalama işi, generative iş değil. Düz Whisper zaman kodlarını
 cümle seviyesinde verir ve saniyelerce sapabilir; kelime seviyesi word_timestamps ile geliyor.
@@ -17,7 +17,7 @@ import sys
 import time
 from pathlib import Path
 
-import schema
+from . import schema
 
 
 def transcribe(

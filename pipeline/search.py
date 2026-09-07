@@ -1,9 +1,9 @@
 """ClickHouse üzerinden replik arama. ADK ajanının find_line aracının arkası.
 
-    python search.py --phrase "I never asked for this"
-    python search.py --phrase "I never asked for this" --tone calm
-    python search.py --word asked
-    python search.py --phrase "..." --compare ..\scratch\out.json
+    python -m pipeline.search --phrase "I never asked for this"
+    python -m pipeline.search --phrase "I never asked for this" --tone calm
+    python -m pipeline.search --word asked
+    python -m pipeline.search --phrase "..." --compare scratch\out.json
 
 --compare en önemlisi: SQL'in yerel referans uygulamasıyla (verify_cut.find_phrase)
 AYNI cevabı verdiğini doğruluyor. İki uygulama ayrışırsa sessizce yanlış sonuç
@@ -17,9 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-import db
-import queries
-import schema
+from . import db, queries, schema
 
 
 def phrase_search(client, project: str, phrase: str, tone: str = "") -> list[dict]:
@@ -52,7 +50,7 @@ def word_search(
 
 def compare_with_reference(doc_path: Path, phrase: str, sql_matches: list[dict]) -> bool:
     """SQL sonucunu yerel referans uygulamayla karşılaştırır."""
-    import verify_cut
+    from . import verify_cut
 
     doc = json.loads(doc_path.read_text(encoding="utf-8"))
     reference = verify_cut.find_phrase(doc, phrase)

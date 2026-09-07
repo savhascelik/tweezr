@@ -25,3 +25,15 @@ Thumbs.db
 models/
 *.bin
 *.onnx
+
+# Frontend bağımlılıkları ve build çıktısı. Sunucu web/dist'i servis ediyor ama
+# derlenen şeyi commit etmiyoruz.
+node_modules/
+web/dist/
+dist/
+
+# SQLite oturum defteri. scratch/ altında ama açıkça yazıyoruz: bu dosya
+# ziyaretçi oturumları ve kredi bakiyeleri tutuyor, repoya girmemeli.
+*.db
+*.db-wal
+*.db-shm

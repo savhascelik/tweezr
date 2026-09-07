@@ -20,6 +20,7 @@ medya ──▶ transcribe.py ──▶ tone.py ──▶ ingest.py ──▶ Cl
 
 | Dosya | İş |
 | --- | --- |
+| `__init__.py` | Paket. `server/` ile şema ve SQL'i paylaşıyor. |
 | `schema.py` | Veri kontratı. Normalizasyon, düzleştirme, doğrulama, hizalama raporu. Tek doğruluk kaynağı. |
 | `fixture.json` | Elle yazılmış kontrat örneği. Pipeline bu şekli üretmek zorunda. |
 | `transcribe.py` | Medya → kelime + ms zaman kodu. |
@@ -35,10 +36,13 @@ medya ──▶ transcribe.py ──▶ tone.py ──▶ ingest.py ──▶ Cl
 
 ## Kurulum
 
+Kurulum ve tüm komutlar **`app/` kökünden** çalışıyor. `pipeline` bir paket, çünkü
+`server/` de aynı şemayı ve SQL'i kullanıyor — iki yerde kopyalanmasın.
+
 ```powershell
-python -m venv ..\.venv
-..\.venv\Scripts\python.exe -m pip install -r requirements.txt
-docker compose -f ..\dev\docker-compose.yml up -d
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-ingest.txt
+docker compose -f dev\docker-compose.yml up -d
 ```
 
 Sistem `ffmpeg`'ine gerek yok.
@@ -46,35 +50,35 @@ Sistem `ffmpeg`'ine gerek yok.
 ## Uçtan uca
 
 ```powershell
-$py = "..\.venv\Scripts\python.exe"
+$py = ".venv\Scripts\python.exe"
 
 # 0. Test sesi (kendi çekimin yoksa)
-powershell -ExecutionPolicy Bypass -File make_test_audio.ps1
-Move-Item sample.wav ..\scratch\
+powershell -ExecutionPolicy Bypass -File pipeline\make_test_audio.ps1
+Move-Item sample.wav scratch\
 
 # 1. Kelime bazlı zaman kodu
-& $py transcribe.py ..\scratch\sample.wav --take-id T01 --scene S01 --camera A `
-    --speaker MAYA --out ..\scratch\T01.json
+& $py -m pipeline.transcribe scratch\sample.wav --take-id T01 --scene S01 --camera A `
+    --speaker MAYA --out scratch\T01.json
 
 # 2. Ton  (anahtar yoksa --dry-run, hepsi neutral olur)
-& $py tone.py ..\scratch\T01.json --media ..\scratch\sample.wav
+& $py -m pipeline.tone scratch\T01.json --media scratch\sample.wav
 
 # 3. ClickHouse'a yaz
-& $py ingest.py ..\scratch\T01.json --replace
+& $py -m pipeline.ingest scratch\T01.json --replace
 
 # 4. Ara
-& $py search.py --phrase "I never asked for this"
-& $py search.py --phrase "I never asked for this" --tone calm
-& $py search.py --word asked
-& $py search.py --stats
+& $py -m pipeline.search --phrase "I never asked for this"
+& $py -m pipeline.search --phrase "I never asked for this" --tone calm
+& $py -m pipeline.search --word asked
+& $py -m pipeline.search --stats
 ```
 
 ## Doğrulama
 
 ```powershell
-& $py test_queries.py                       # SQL doğruluk testleri
-python -m doctest schema.py                 # normalizasyon
-& $py search.py --phrase "..." --compare ..\scratch\T01.json
+& $py -m pipeline.test_queries                    # SQL doğruluk testleri (12)
+& $py -m doctest pipeline\schema.py               # normalizasyon
+& $py -m pipeline.search --phrase "..." --compare scratch\T01.json
 ```
 
 `--compare` en önemlisi: SQL ile yerel referans uygulamanın (`verify_cut.find_phrase`)
@@ -86,12 +90,12 @@ Sayısal rapor hizalamanın makul olduğunu söyler, kalitesine kulak karar veri
 
 ```powershell
 # Cümlenin geçtiği yerleri kesip birleştir
-& $py verify_cut.py ..\scratch\T01.json --phrase "I never asked for this" `
-    --media ..\scratch\sample.wav --splice --out ..\scratch\spliced.wav
+& $py -m pipeline.verify_cut scratch\T01.json --phrase "I never asked for this" `
+    --media scratch\sample.wav --splice --out scratch\spliced.wav
 
 # EN ZOR TEST: kelimeleri farklı yerlerden toplayıp yeni cümle kur
-& $py verify_cut.py ..\scratch\T01.json --phrase "I asked for quiet on set" `
-    --media ..\scratch\sample.wav --assemble --out ..\scratch\assembled.wav
+& $py -m pipeline.verify_cut scratch\T01.json --phrase "I asked for quiet on set" `
+    --media scratch\sample.wav --assemble --out scratch\assembled.wav
 ```
 
 Kelime kırpılmış geliyorsa ilk çevireceğin düğme `--pad-ms 40`.

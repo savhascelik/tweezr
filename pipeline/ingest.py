@@ -1,7 +1,7 @@
 """Ingest dokümanı -> ClickHouse `words` tablosu.
 
-    python ingest.py ..\scratch\out.json
-    python ingest.py fixture.json --replace
+    python -m pipeline.ingest scratch\out.json
+    python -m pipeline.ingest pipeline\fixture.json --replace
 
 --replace aynı project_id'yi önce siliyor. Tekrar tekrar ingest edip aynı sonucu
 almak istiyorsun, yoksa satırlar birikiyor ve arama iki kat sonuç veriyor.
@@ -14,9 +14,7 @@ import json
 import sys
 from pathlib import Path
 
-import db
-import queries
-import schema
+from . import db, queries, schema
 
 
 def ingest(client, doc: dict, replace: bool = False) -> int:

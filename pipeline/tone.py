@@ -7,9 +7,9 @@ Take başına TEK çağrı: ses + hizalı satır listesi -> satır başına ton 
 8-12 take'lik bir korpus 8-12 çağrı demek. Tek yerde debug, öngörülebilir maliyet.
 
     $env:GEMINI_API_KEY = "..."
-    python tone.py ..\scratch\out.json --media ..\scratch\sample.wav
+    python -m pipeline.tone scratch\out.json --media scratch\sample.wav
 
-    python tone.py ..\scratch\out.json --dry-run    # API anahtarı olmadan, hepsi neutral
+    python -m pipeline.tone scratch\out.json --dry-run    # API anahtarı olmadan, hepsi neutral
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-import schema
+from . import schema
 
 MODEL = "gemini-2.5-flash"
 

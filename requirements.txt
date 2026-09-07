@@ -1,0 +1,23 @@
+# Sunucu çalışma zamanı. Cloud Run imajının taşıdığı şey bu.
+#
+# Transkripsiyon yığını (faster-whisper + ctranslate2, yüzlerce MB) burada YOK:
+# ingest offline çalışıyor, sunucu sadece hazır satırları sorguluyor.
+# İngest için: pip install -r requirements-ingest.txt
+#
+# Doğrulanmış sürümler — Python 3.11.9, Windows, CPU.
+
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+
+# ClickHouse retrieval. Track şartı: gerçekten import edilip çağrılıyor,
+# bkz. pipeline/db.py ve pipeline/queries.py.
+clickhouse-connect==1.8.0
+
+# Ton sınıflandırması ve (sonra) ADK ajanı.
+google-genai==2.22.0
+
+# Statik ffmpeg binary'si: render ve ses çıkarma için. Sistem kurulumu gerekmiyor.
+imageio-ffmpeg==0.5.1
+
+# TestClient bağımlılığı (server/test_api.py).
+httpx==0.28.1
