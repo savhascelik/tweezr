@@ -22,6 +22,8 @@ const state = {
   webmcp: { available: false, registered: 0 },
   // Sayfa içi sohbet. Harici ajanın yerine geçmiyor, ajanı OLMAYAN kullanıcı için.
   chat: { available: false, reason: "", messagesLeft: 0, busy: false, messages: [] },
+  // Render işi. status: idle | queued | running | done | failed
+  render: { status: "idle", jobId: null, downloadUrl: null, mode: null },
 };
 
 const listeners = new Set();

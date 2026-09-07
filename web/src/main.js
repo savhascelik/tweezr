@@ -7,6 +7,7 @@
  */
 
 import * as api from "./api.js";
+import { confirmRender } from "./approve.js";
 import { createPlayer } from "./player.js";
 import * as store from "./store.js";
 import { createUI } from "./ui.js";
@@ -115,20 +116,63 @@ const actions = {
     }
   },
 
-  async render() {
-    const { timeline } = store.getState();
+  /**
+   * Tek geri alınamaz adım, ve tek kredi harcayan adım.
+   *
+   * Ajan da insan da buraya geliyor ama onay her ikisinde de insanın. Ajan
+   * çağırdığında aracın promise'i pencerede bekliyor — HITL kapısının somut hali.
+   */
+  async render({ requestedBy = "human" } = {}) {
+    const { timeline, session } = store.getState();
     if (!timeline.length) {
       store.setStatus("warn", "Kurgu boş.");
-      return;
+      return { approved: false, reason: "timeline boş" };
     }
-    store.setStatus("busy", "Render isteniyor…");
+
+    const cost = session?.costs?.commit_render ?? 1;
+    const approved = await confirmRender({
+      segments: timeline,
+      cost,
+      credits: session?.credits ?? 0,
+      requestedBy,
+    });
+
+    if (!approved) {
+      store.setStatus("warn", "Render onaylanmadı. Hiçbir şey üretilmedi, kredi harcanmadı.");
+      return { approved: false, reason: "insan onaylamadı" };
+    }
+
+    store.setStatus("busy", "Render ediliyor…");
+    store.patch({ render: { status: "queued", jobId: null, downloadUrl: null } });
     try {
-      const result = await api.requestRender(timeline);
-      store.setStatus("ok", `Render kuyruğa alındı: ${result.job_id ?? "?"}`);
-      return result;
+      const queued = await api.requestRender(timeline);
+      store.patch({
+        render: { status: queued.status, jobId: queued.job_id, downloadUrl: null },
+        session: queued.session ?? session,
+      });
+
+      const job = await api.waitForRender(queued.job_id);
+      if (job.status !== "done") {
+        throw new Error(job.error || `Render başarısız (${job.status})`);
+      }
+
+      store.patch({
+        render: {
+          status: "done",
+          jobId: job.job_id,
+          downloadUrl: job.download_url,
+          mode: job.mode,
+        },
+      });
+      store.setStatus(
+        "ok",
+        `Render bitti: ${job.segments} parça, ${(job.duration_ms / 1000).toFixed(2)} sn. ` +
+          `${queued.charged} kredi düştü, ${queued.credits_left} kaldı.`
+      );
+      return { approved: true, ...job, download_url: job.download_url };
     } catch (error) {
-      // Render işçisi henüz devrede değil ve kredi harcamıyor; mesaj bunu söylüyor
-      store.setStatus("warn", error.message);
+      store.patch({ render: { status: "failed", jobId: null, downloadUrl: null } });
+      store.setStatus("error", error.message);
       throw error;
     }
   },

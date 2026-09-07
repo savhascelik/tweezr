@@ -268,12 +268,33 @@ function buildTools({ actions, store, costs, session }) {
         if (!timeline.length) {
           throw new Error("The timeline is empty. Call propose_cut before commit_render.");
         }
-        // Onay penceresi ve FFmpeg işi task 6. Şu an sunucu 503 dönüyor ve
-        // kredi harcamıyor: çalışmayan bir iş için kredi düşürmek sessiz kayıp olur.
-        const result = await actions.render();
+
+        // requestedBy: "agent" — onay penceresi bunu yazıyor, insan render'ı kimin
+        // istediğini görüyor. Bu çağrı pencerede BEKLİYOR: kapı burada.
+        const result = await actions.render({ requestedBy: "agent" });
+
+        if (!result?.approved) {
+          return {
+            summary:
+              "The editor did not approve the render. Nothing was produced and no " +
+              "credit was spent. The proposal is still on the timeline; ask what they " +
+              "want changed rather than calling this again.",
+            approved: false,
+            rendered: false,
+            reason: result?.reason ?? "declined",
+          };
+        }
+
         return {
-          summary: `Render queued for ${timeline.length} segments.`,
-          ...result,
+          summary:
+            `The editor approved it. Rendered ${result.segments} segments, ` +
+            `${(result.duration_ms / 1000).toFixed(2)}s, available at ${result.download_url}.`,
+          approved: true,
+          rendered: true,
+          job_id: result.job_id,
+          segments: result.segments,
+          duration_ms: result.duration_ms,
+          download_url: result.download_url,
         };
       },
     },

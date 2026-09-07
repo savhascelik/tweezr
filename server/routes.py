@@ -10,12 +10,14 @@ verildiğinde bu doğrudan "o tonun en iyi örneği önce" demek oluyor.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from pipeline import queries, schema, search
 
 from . import agent, ch, config, sessions
+from . import render as render_worker
 
 router = APIRouter(prefix="/api")
 
@@ -249,9 +251,15 @@ class RenderRequest(BaseModel):
 
 
 @router.post("/render")
-def render(body: RenderRequest, request: Request, response: Response) -> dict:
+async def render(
+    body: RenderRequest,
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+) -> dict:
     session = current_session(request, response)
-    validate_project(body.project)
+    project = validate_project(body.project)
+
     for segment in body.segments:
         if segment.end_ms <= segment.start_ms:
             raise HTTPException(
@@ -259,12 +267,70 @@ def render(body: RenderRequest, request: Request, response: Response) -> dict:
                 detail=f"Geçersiz aralık: {segment.start_ms}-{segment.end_ms}",
             )
 
-    raise HTTPException(
-        status_code=503,
-        detail=(
-            "Render işçisi henüz devrede değil. Öneri, önizleme ve timeline oynatma "
-            f"çalışıyor ve kredi harcamıyor. Bakiye: {session['credits']}."
-        ),
+    # Sıra önemli: DOĞRULAMA önce, kredi sonra. Reddedilen bir istek için kredi
+    # düşürmek kullanıcının hatasını ona ödetmek olur.
+    try:
+        job, steps, total = render_worker.enqueue(
+            session["id"], project, [segment.model_dump() for segment in body.segments]
+        )
+    except render_worker.RenderRejected as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except Exception as error:
+        drop_client()
+        raise HTTPException(status_code=503, detail=f"Render planlanamadı: {error}")
+
+    try:
+        remaining = sessions.charge(
+            session["id"], config.COST_RENDER, f"render {job.id} ({job.segments} parça)"
+        )
+    except sessions.InsufficientCredits as error:
+        job.status = "failed"
+        job.error = "kredi yetersiz"
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Render {error.needed} kredi gerektiriyor, bakiye {error.balance}. "
+                "Arama, öneri ve önizleme kredi harcamıyor ve çalışmaya devam ediyor."
+            ),
+        )
+
+    background.add_task(render_worker.start, job, steps)
+
+    session = sessions.get(session["id"]) or session
+    return {
+        **job.public(),
+        "charged": config.COST_RENDER,
+        "credits_left": remaining,
+        "total_duration_ms": total,
+        "session": session_payload(session),
+    }
+
+
+@router.get("/render/{job_id}")
+def render_status(job_id: str, request: Request, response: Response) -> dict:
+    session = current_session(request, response)
+    job = render_worker.get(job_id)
+    # Başka oturumun işini 404 olarak veriyoruz: var olduğunu bile söylemiyoruz
+    if job is None or job.session_id != session["id"]:
+        raise HTTPException(status_code=404, detail="Böyle bir render işi yok.")
+    return job.public()
+
+
+@router.get("/render/{job_id}/file")
+def render_file(job_id: str, request: Request, response: Response):
+    session = current_session(request, response)
+    job = render_worker.get(job_id)
+    if job is None or job.session_id != session["id"]:
+        raise HTTPException(status_code=404, detail="Böyle bir render işi yok.")
+    if job.status != "done" or job.output is None or not job.output.is_file():
+        raise HTTPException(status_code=409, detail=f"Render hazır değil: {job.status}")
+
+    # StaticFiles ile mount ETMİYORUZ: çıktılar oturuma ait, dizin listelenebilir
+    # ya da kimliği bilen herkes tarafından indirilebilir olmamalı.
+    return FileResponse(
+        job.output,
+        filename=f"roughcut-{job.id}{job.output.suffix}",
+        media_type="video/mp4" if job.output.suffix == ".mp4" else "audio/wav",
     )
 
 

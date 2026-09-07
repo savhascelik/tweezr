@@ -201,6 +201,7 @@ export function createUI(root, handlers) {
     text: "Onayla ve render et",
     onClick: () => handlers.onRender(),
   });
+  nodes.renderResult = el("p", { class: "render-result" });
 
   const timelinePanel = el("section", { class: "panel" }, [
     el("h2", {}, []),
@@ -213,6 +214,7 @@ export function createUI(root, handlers) {
       nodes.clearButton,
       nodes.renderButton,
     ]),
+    nodes.renderResult,
   ]);
   timelinePanel.firstChild.append(document.createTextNode("Kaba kurgu "), nodes.total);
 
@@ -397,6 +399,42 @@ export function createUI(root, handlers) {
     renderChat(state);
     renderCandidates(state);
     renderTimeline(state);
+    renderJob(state);
+  }
+
+  function renderJob(state) {
+    const job = state.render ?? { status: "idle" };
+    nodes.renderResult.replaceChildren();
+
+    const busy = job.status === "queued" || job.status === "running";
+    nodes.renderButton.disabled = nodes.renderButton.disabled || busy;
+
+    if (job.status === "idle") return;
+
+    if (busy) {
+      nodes.renderResult.appendChild(
+        el("span", { class: "dim", text: "Render sürüyor…" })
+      );
+      return;
+    }
+    if (job.status === "failed") {
+      nodes.renderResult.appendChild(
+        el("span", { class: "status-error", text: "Render başarısız." })
+      );
+      return;
+    }
+    if (job.status === "done" && job.downloadUrl) {
+      nodes.renderResult.append(
+        el("span", { class: "dim", text: "Hazır: " }),
+        el("a", {
+          class: "source",
+          href: job.downloadUrl,
+          // Aynı origin ve indirme; yeni sekme açmıyoruz
+          download: "",
+          text: `roughcut (${job.mode === "video" ? "mp4" : "wav"})`,
+        })
+      );
+    }
   }
 
   return { render, stage: nodes.stage };

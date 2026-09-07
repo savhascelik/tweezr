@@ -74,3 +74,21 @@ export function requestRender(segments) {
     }),
   });
 }
+
+export function renderStatus(jobId) {
+  return request(`/api/render/${encodeURIComponent(jobId)}`);
+}
+
+/** İş bitene kadar durumu yokluyor. Render CPU işi, süresi öngörülemez. */
+export async function waitForRender(jobId, { intervalMs = 700, timeoutMs = 120000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let job = await renderStatus(jobId);
+  while (job.status === "queued" || job.status === "running") {
+    if (Date.now() > deadline) {
+      throw new Error(`Render zaman aşımına uğradı (${job.status})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    job = await renderStatus(jobId);
+  }
+  return job;
+}

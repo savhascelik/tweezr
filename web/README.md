@@ -25,8 +25,33 @@ Blueprint React diyordu; bu bilinçli bir sapma.
 | `src/player.js` | Sanal kırpma oynatıcısı. Çift tampon + rAF. |
 | `src/ui.js` | Render. `el()` yardımcısı sadece `textContent` kabul ediyor. |
 | `src/webmcp.js` | Beş WebMCP aracı. Kayıt, durum yansıması, fallback. |
+| `src/approve.js` | Render onay penceresi. Closed shadow root. |
 | `src/main.js` | Bağlama + `ready` promise'i. |
-| `test_web.mjs` | Testler. Bağımlılık yok, düz node. |
+| `test_web.mjs` | Store, WebMCP ve enjeksiyon testleri. |
+| `test_approve.mjs` | Onay penceresi testleri, sahte DOM ile. |
+
+## Onay penceresi
+
+Ürünün tek geri alınamaz adımının kapısı. Ajan `commit_render` çağırdığında pencere
+açılıyor ve **aracın promise'i insanın kararını bekliyor** — HITL kapısının somut hali.
+Pencere render'ı kimin istediğini de yazıyor.
+
+Üç savunma, her birinin somut bir sebebi var:
+
+**Closed shadow root.** Sayfadaki başka bir script `host.shadowRoot` ile içeriye
+ulaşamıyor (closed'da `null` dönüyor), yani Approve düğmesini bulup programatik olarak
+basamıyor.
+
+**Sadece `textContent`.** Geçen projede onay penceresini `innerHTML` ile kurmuştuk ve
+zehirli bir araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinler take
+kimlikleri, replik metni ve dosya adları — hepsi kontrol etmediğimiz veri.
+
+**Host stilleri inline ve `!important`.** Sayfa CSS'i pencereyi görünmez yapıp
+kullanıcıya farkında olmadan onaylatamasın.
+
+İki küçük ama önemli detay: varsayılan odak **Vazgeç**'te, yanlışlıkla Enter'a basmak
+render başlatmasın. Ve zaman aşımı (5 dk) **red** yönünde çözülüyor — ajan çağırıp insan
+masadan kalkarsa aracın promise'i sonsuza beklemesin, ama sessizce onaylanmasın da.
 
 ## WebMCP araçları
 
@@ -125,9 +150,16 @@ araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinlerin kaynağ�
 
 ```powershell
 node web\test_web.mjs
+node web\test_approve.mjs
 ```
 
-57 test. Enjeksiyon disiplini, `el()` sözleşmesi, dış bağlantı `noopener`'ı, store
+`test_approve.mjs` 28 test, minimal bir sahte DOM ile: shadow root'un `closed`
+açılması, host stillerinin zorlanması, `role=dialog`/`aria-modal`, provenance metninin
+görünmesi, varsayılan odağın Vazgeç'te olması, Escape'in reddetmesi, zaman aşımının
+**red** yönünde çözülmesi, ajan isteğinin ayrıca işaretlenmesi, dinleyicilerin
+bırakılmaması ve çift karara karşı korunma.
+
+`test_web.mjs` 67 test. Enjeksiyon disiplini, `el()` sözleşmesi, dış bağlantı `noopener`'ı, store
 timeline işlemleri, `getState`'in kopya döndürmesi, abonelik yaşam döngüsü ve bir
 abonenin hatasının diğerlerini düşürmemesi.
 
@@ -151,3 +183,5 @@ Yani şunlar otomatik test edilemiyor ve elle bakılmalı:
 3. Aktif parça timeline'da vurgulanıyor mu, sayaç ilerliyor mu
 4. "kaynağı aç" doğru aralığı açıyor mu
 5. Önizle tek parçayı çalıp duruyor mu
+6. Onay penceresi gerçek shadow DOM'da beklendiği gibi görünüyor ve okunuyor mu
+7. Render sonrası indirme bağlantısı çalışıyor mu

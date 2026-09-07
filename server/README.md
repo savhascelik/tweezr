@@ -61,7 +61,9 @@ session ve yeni bir kota alıyor.
 | `POST /api/find_line` | cümle → sıralı aday listesi | 0 |
 | `GET /api/word/{word}` | kelimenin geçtiği yerler (kelime cımbızlama) | 0 |
 | `GET /api/library/stats` | kütüphanede ne var | 0 |
-| `POST /api/render` | **henüz 503**, kredi harcamıyor | 1 |
+| `POST /api/render` | onaylanmış kesimi kuyruğa alır | 1 |
+| `GET /api/render/{id}` | iş durumu (oturum sahibine) | 0 |
+| `GET /api/render/{id}/file` | çıktıyı indir (oturum sahibine) | 0 |
 | `GET /api/chat/status` | asistan açık mı, kaç mesaj hakkı kaldı | 0 |
 | `POST /api/chat` | sayfa içi asistan (ADK) | sayaç |
 | `GET /media/*` | medya, HTTP range destekli | 0 |
@@ -73,8 +75,46 @@ olmadan da tam çalışıyor.
 Sıralama ürün mantığı, SQL'de değil `routes.py`'de: ton skoru yüksek olan önce. Ton
 filtresi verildiğinde bu doğrudan "o tonun en iyi örneği önce" oluyor.
 
-`/api/render` bilerek 503 dönüyor. Çalışmayan bir iş için kredi düşürmek sessiz veri
-kaybı olur; işçi devreye girene kadar kredi harcanmıyor ve test bunu doğruluyor.
+## Render
+
+Tek geri alınamaz ve tek kredi harcayan adım. Tarayıcı tarafında insanın onayı olmadan
+buraya hiç gelinmiyor (bkz. `web/src/approve.js`).
+
+### Kesilecek dosya yolu istekten GELMİYOR
+
+En önemli karar bu. İstek sadece `candidate_id` (`take_id:line_id:start_ms`) ve zaman
+aralığı taşıyor. Medya yolu ClickHouse'daki `source_url`'den türetiliyor, `MEDIA_DIR`
+altına çözülüyor ve gerçekten orada olduğu doğrulanıyor.
+
+İstemciye dosya adı söyletmek path traversal demek olurdu — ve ffmpeg'e verilen her yol
+okunabilir bir dosyadır, yani `../../.env` gerçek bir sızma yolu. `resolve_media` hem
+taban adını alıyor hem çözülen yolun izinli dizinde kaldığını doğruluyor; test
+`../../.env`, `..\\..\\.env`, `/etc/passwd`, `..` ve boş girdiyi deniyor.
+
+Zaman aralığı da doğrulanıyor: take'in ClickHouse'daki bilinen süresinin dışına
+taşamıyor ve toplam çıktı 10 dakikayı geçemiyor. Aksi halde tek istekle saatlerce CPU
+yakılabilirdi.
+
+### Sıra: önce doğrula, sonra kredi düş
+
+Reddedilen bir istek için kredi düşürmek kullanıcının hatasını ona ödetmek olur. Test
+bunu ayrıca kontrol ediyor: geçersiz istekten sonra bakiye değişmiyor.
+
+### concat filtresi, demuxer değil
+
+Demuxer tüm girdilerin aynı codec ve parametrelerde olmasını istiyor; farklı take'ler
+farklı kayıtlardan gelebilir. Filtre yeniden encode ediyor ve bunu tolere ediyor,
+girdiler ortak örnekleme hızına normalize ediliyor.
+
+Çıktı formatı girdiye göre: tüm kaynaklarda video akışı varsa MP4, yoksa WAV. Tespit
+ffmpeg'in kendi akış özetinden okunuyor (`imageio-ffmpeg` ffprobe getirmiyor). Sessiz
+fallback yok — seçilen mod iş kaydında bildiriliyor.
+
+### Çıktılar StaticFiles ile mount EDİLMİYOR
+
+`/api/render/{id}/file` işin oturuma ait olduğunu kontrol edip dosyayı veriyor. Mount
+etmek dizini listelenebilir ya da kimliği bilen herkes tarafından indirilebilir yapardı.
+Başka oturumun işi **404** dönüyor, 403 değil: var olduğunu bile söylemiyoruz.
 
 ## ADK ajanı neden WebMCP'nin altında değil
 

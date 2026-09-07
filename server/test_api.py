@@ -55,12 +55,52 @@ def check_that(name: str, condition: bool, detail: str = "") -> None:
         print(f"             {detail}")
 
 
+TEST_MEDIA_NAME = "__api_test_take__.wav"
+
+
+def write_test_media() -> None:
+    """Render testleri için gerçek bir WAV üretir. Sadece stdlib, platform bağımsız.
+
+    seed_demo'nun SAPI'sine dayanmıyoruz: testler Windows dışında da koşabilmeli ve
+    seed verisine bağlı olmamalı. İçerik önemsiz, süresi önemli — fixture aralıkları
+    4.3 saniyeye kadar gidiyor.
+    """
+    import math
+    import struct
+    import wave
+
+    config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    path = config.MEDIA_DIR / TEST_MEDIA_NAME
+    if path.is_file():
+        return
+
+    rate = 22050
+    seconds = 6
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(1)
+        handle.setsampwidth(2)
+        handle.setframerate(rate)
+        frames = bytearray()
+        for index in range(rate * seconds):
+            value = int(8000 * math.sin(2 * math.pi * 220 * index / rate))
+            frames += struct.pack("<h", value)
+        handle.writeframes(bytes(frames))
+
+
 def seed_clickhouse():
     """Kontrat fixture'ını izole bir projeye yazar. Hazırsa istemciyi döner."""
     fixture = json.loads(
         (config.APP_ROOT / "pipeline" / "fixture.json").read_text(encoding="utf-8")
     )
     fixture["project_id"] = API_TEST_PROJECT
+
+    # Render testleri gerçek bir dosya istiyor. Fixture'ın gs:// yolları yerine
+    # ürettiğimiz WAV'a bakıyoruz; medya yolu zaten VERİTABANINDAN türetiliyor,
+    # yani bu yönlendirme render'ın gerçek yolunu test ediyor.
+    write_test_media()
+    for take in fixture["takes"]:
+        take["source_url"] = TEST_MEDIA_NAME
+
     try:
         client = ch.connect()
         ch.create_table(client)
@@ -76,7 +116,38 @@ def main() -> int:
     app = create_app()
     clickhouse = seed_clickhouse()
 
-    print("=== güvenlik header'ları ===")
+    print("=== medya URL eşlemesi ===")
+    from . import render as render_worker
+    from . import routes
+
+    check(
+        "gs:// taban adına indi",
+        routes.media_url("gs://bucket/S01_T03.mp4"),
+        "/media/S01_T03.mp4",
+    )
+    check("düz ad", routes.media_url("take.wav"), "/media/take.wav")
+    check("http olduğu gibi kalıyor", routes.media_url("https://cdn/x.mp4"), "https://cdn/x.mp4")
+    check("mutlak yol korunuyor", routes.media_url("/media/x.wav"), "/media/x.wav")
+
+    print("\n=== medya yolu çözümü (path traversal) ===")
+    # Yol istekten gelmiyor ama yine de dizin dışına çıkmadığını doğruluyoruz:
+    # bu fonksiyon ffmpeg'e verilecek dosyayı belirliyor.
+    write_test_media()
+    resolved = render_worker.resolve_media(f"gs://bucket/{TEST_MEDIA_NAME}")
+    check_that(
+        "izinli dizin içinde çözüldü",
+        resolved.parent.resolve() == config.MEDIA_DIR.resolve(),
+        str(resolved),
+    )
+    for hostile in ["../../.env", "..\\..\\.env", "/etc/passwd", "..", ""]:
+        rejected = False
+        try:
+            render_worker.resolve_media(hostile)
+        except Exception:
+            rejected = True
+        check_that(f"reddedildi: {hostile!r}", rejected)
+
+    print("\n=== güvenlik header'ları ===")
     with TestClient(app) as client:
         health = client.get("/healthz")
         check("healthz 200", health.status_code, 200)
@@ -164,8 +235,8 @@ def main() -> int:
             check("süre hesaplandı", best["duration_ms"], best["end_ms"] - best["start_ms"])
             check("kararlı kimlik", best["id"], f"{best['take_id']}:{best['line_id']}:{best['start_ms']}")
             # provenance: fragment kaynağına geri gidebilsin
-            check_that("kaynak korundu", best["source_url"].startswith("gs://"), best["source_url"])
-            check("oynatma URL'i", best["media_url"], "/media/S01_T03.mp4")
+            check("kaynak korundu", best["source_url"], TEST_MEDIA_NAME)
+            check("oynatma URL'i", best["media_url"], f"/media/{TEST_MEDIA_NAME}")
 
             calm = find(phrase="I never asked for this", tone="calm").json()
             check("ton filtresi 1 aday", len(calm["candidates"]), 1)
@@ -180,27 +251,126 @@ def main() -> int:
             stats = client.get(f"/api/library/stats?project={API_TEST_PROJECT}")
             check("kütüphane istatistiği", stats.json()["stats"]["takes"], 3)
 
-    print("\n=== render henüz devrede değil ===")
-    with TestClient(app) as client:
-        client.get("/api/session")
-        before = client.get("/api/session").json()["session"]["credits"]
-        attempt = client.post(
-            "/api/render",
-            json={"segments": [{"candidate_id": "S01_T03:1:800", "start_ms": 800, "end_ms": 2700}]},
-        )
-        check("render 503", attempt.status_code, 503)
-        after = client.get("/api/session").json()["session"]["credits"]
-        # Çalışmayan bir iş için kredi harcamak sessiz veri kaybı olur
-        check("kredi harcanmadı", after, before)
+    print("\n=== render ===")
+    if clickhouse is None:
+        print("  ATLANDI    ClickHouse yok")
+    else:
+        with TestClient(app) as client:
+            def render(segments):
+                return client.post(
+                    "/api/render", json={"project": API_TEST_PROJECT, "segments": segments}
+                )
 
-        check(
-            "geçersiz aralık 422",
-            client.post(
+            def credits():
+                return client.get("/api/session").json()["session"]["credits"]
+
+            check(
+                "geçersiz aralık 422",
+                render([{"candidate_id": "S01_T03:1:800", "start_ms": 500, "end_ms": 500}]).status_code,
+                422,
+            )
+
+            # Kütüphanede olmayan take. Yol istekten gelmediği için "dosya" değil
+            # "take" reddediliyor — path traversal denemesi buraya bile ulaşmıyor.
+            before = credits()
+            traversal = render(
+                [{"candidate_id": "../../../../etc/passwd:1:0", "start_ms": 0, "end_ms": 500}]
+            )
+            check("uydurma take reddedildi", traversal.status_code, 422)
+            check_that(
+                "sebep kütüphanede yok diyor",
+                "take" in traversal.json()["detail"].lower(),
+                traversal.json()["detail"],
+            )
+            # Doğrulama krediden ÖNCE: reddedilen istek kullanıcıya ödetilmiyor
+            check("reddedilen istek kredi harcamadı", credits(), before)
+
+            # Kaydın dışına taşan aralık
+            outside = render(
+                [{"candidate_id": "S01_T03:1:800", "start_ms": 0, "end_ms": 999_999}]
+            )
+            check("kayıt dışı aralık 422", outside.status_code, 422)
+            check("hâlâ kredi harcanmadı", credits(), before)
+
+            # Gerçek render
+            job_id = None
+            ok = render(
+                [
+                    {"candidate_id": "S01_T03:1:800", "start_ms": 800, "end_ms": 2700},
+                    {"candidate_id": "S01_T01:1:1200", "start_ms": 1200, "end_ms": 2620},
+                ]
+            )
+            check("render kabul edildi", ok.status_code, 200)
+            if ok.status_code == 200:
+                body = ok.json()
+                job_id = body["job_id"]
+                check("1 kredi düştü", body["charged"], 1)
+                check("bakiye güncellendi", body["credits_left"], before - 1)
+                check("iki parça", body["segments"], 2)
+                check("süre toplandı", body["total_duration_ms"], (2700 - 800) + (2620 - 1200))
+
+                # İş arka planda; TestClient BackgroundTasks'ı cevap sonrası koşturuyor
+                status = client.get(f"/api/render/{job_id}").json()
+                check("iş bitti", status["status"], "done")
+                check("çıktı ses", status["mode"], "audio")
+                check_that("indirme bağlantısı var", "download_url" in status, status)
+
+                downloaded = client.get(f"/api/render/{job_id}/file")
+                check("dosya indirildi", downloaded.status_code, 200)
+                check_that(
+                    "wav başlığı doğru",
+                    downloaded.content[:4] == b"RIFF",
+                    downloaded.content[:12],
+                )
+                # Süre kontrolü: 1900 + 1420 = 3320 ms, 48 kHz stereo 16-bit
+                expected = int(48000 * 2 * 2 * 3.32)
+                check_that(
+                    "çıktı süresi beklenene yakın",
+                    abs(len(downloaded.content) - expected) < expected * 0.1,
+                    f"{len(downloaded.content)} byte, beklenen ~{expected}",
+                )
+
+            check(
+                "olmayan iş 404",
+                client.get("/api/render/yokboyle").status_code,
+                404,
+            )
+
+        # Başka oturum aynı işe erişememeli
+        if job_id:
+            with TestClient(app) as other:
+                other.get("/api/session")
+                check(
+                    "başka oturum işi göremiyor",
+                    other.get(f"/api/render/{job_id}").status_code,
+                    404,
+                )
+                check(
+                    "başka oturum dosyayı indiremiyor",
+                    other.get(f"/api/render/{job_id}/file").status_code,
+                    404,
+                )
+
+        # Kredi bitince 402 ve iş oluşmuyor
+        with TestClient(app) as broke:
+            broke.get("/api/session")
+            cookie = broke.cookies[config.SESSION_COOKIE]
+            sessions.charge(cookie, config.GUEST_CREDITS, "testte bakiyeyi bitir")
+            denied = broke.post(
                 "/api/render",
-                json={"segments": [{"candidate_id": "x", "start_ms": 500, "end_ms": 500}]},
-            ).status_code,
-            422,
-        )
+                json={
+                    "project": API_TEST_PROJECT,
+                    "segments": [
+                        {"candidate_id": "S01_T03:1:800", "start_ms": 800, "end_ms": 2700}
+                    ],
+                },
+            )
+            check("kredi yoksa 402", denied.status_code, 402)
+            check_that(
+                "402 aramanın bedava olduğunu söylüyor",
+                "kredi harcamıyor" in denied.json()["detail"],
+                denied.json()["detail"],
+            )
 
     print("\n=== kredi defteri atomikliği ===")
     session = sessions.create(ip="test", role="guest")
@@ -320,11 +490,7 @@ def main() -> int:
             found = agent_tools.find_line("I never asked for this")
             check("find_line 3 buldu", found["found"], 3)
             check("en iyi calm", found["candidates"][0]["tone"], "calm")
-            check_that(
-                "aday kaynağını taşıyor",
-                found["candidates"][0]["source"].startswith("gs://"),
-                found["candidates"][0]["source"],
-            )
+            check("aday kaynağını taşıyor", found["candidates"][0]["source"], TEST_MEDIA_NAME)
             check("çağrı kaydedildi", agent_tools.collection()["tool_calls"][0]["name"], "find_line")
 
             calm = agent_tools.find_line("I never asked for this", tone="calm")

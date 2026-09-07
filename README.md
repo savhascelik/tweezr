@@ -28,13 +28,15 @@ Bu depo yapım aşamasında. Bugün itibarıyla **çalışan ve test edilmiş** 
 - Timeline arayüzü: sanal kırpma oynatıcı (çift tampon + rAF), tıklanabilir
   provenance şeridi, WebMCP'siz tarayıcı için elle sürülebilir panel
 - Beş WebMCP aracı: `find_line`, `propose_cut`, `preview_segment`,
-  `get_timeline_state`, `commit_render` — 57 frontend testi
+  `get_timeline_state`, `commit_render`
+- Onay penceresi: closed shadow root, provenance görünür, varsayılan odak Vazgeç'te
+- Render: onaydan sonra FFmpeg birleştirmesi, 1 kredi, oturuma özel indirme —
+  canlı ölçüldü: iki farklı take'ten 2160 ms çıktı, beklenenin tam eşi
+- Sayfa içi ADK asistanı (anahtar varsa; yoksa ürün onsuz çalışıyor)
 
-Kod hazır ama **doğrulanmadı**: Gemini ton sınıflandırması (canlı anahtar yok),
-ve araçların gerçek bir ajan istemcisinde görünmesi (yerelde `document.modelContext`
-olan tarayıcı yok).
-
-Henüz **yok**: ADK ajanı, render işçisi, onay penceresi.
+Kod hazır ama **doğrulanmadı**: Gemini ton sınıflandırması ve asistan turu (canlı
+anahtar yok), araçların gerçek bir ajan istemcisinde görünmesi (yerelde
+`document.modelContext` olan tarayıcı yok).
 
 `pipeline/README.md`, `server/README.md` ve `web/README.md` ayrıntıları taşıyor.
 
@@ -93,9 +95,11 @@ sunucu sadece sorguluyor.
 ## Test
 
 ```powershell
-.venv\Scripts\python.exe -m pipeline.test_queries    # 12 SQL doğruluk testi
-.venv\Scripts\python.exe -m server.test_api          # 38 API testi
+.venv\Scripts\python.exe -m pipeline.test_queries    # 12  SQL doğruluk testi
+.venv\Scripts\python.exe -m server.test_api          # 99  API + render + ajan araçları
 .venv\Scripts\python.exe -m doctest pipeline\schema.py
+node web\test_web.mjs                                # 67  store, WebMCP, enjeksiyon
+node web\test_approve.mjs                            # 28  onay penceresi
 ```
 
 Uçtan uca ingest ve kesim doğrulaması: `pipeline/README.md`.
