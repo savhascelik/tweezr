@@ -13,8 +13,13 @@ uvicorn[standard]==0.52.4
 # bkz. pipeline/db.py ve pipeline/queries.py.
 clickhouse-connect==1.8.0
 
-# Ton sınıflandırması ve (sonra) ADK ajanı.
+# Ton sınıflandırması (pipeline/tone.py).
 google-genai==2.22.0
+
+# Sayfa içi asistan. Araç şemasını fonksiyon imzası ve docstring'inden üretiyor,
+# bkz. server/agent_tools.py. Anahtar yoksa sohbet kapanıyor, ürün çalışmaya devam
+# ediyor — o yüzden bu bağımlılık zorunlu değil ama varsayılan olarak kurulu.
+google-adk==2.8.0
 
 # Statik ffmpeg binary'si: render ve ses çıkarma için. Sistem kurulumu gerekmiyor.
 imageio-ffmpeg==0.5.1

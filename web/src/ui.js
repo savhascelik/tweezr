@@ -134,6 +134,43 @@ export function createUI(root, handlers) {
     nodes.status,
   ]);
 
+  // --- Sayfa içi sohbet ---
+  // Harici ajanın yerine geçmiyor; ajanı olmayan kullanıcı için. Anahtar yoksa
+  // sebebi yazıp panele yönlendiriyor, sessizce kaybolmuyor.
+  nodes.chatLog = el("div", { class: "chat-log" });
+  nodes.chatInput = el("input", {
+    type: "text",
+    id: "chat",
+    placeholder: "Bu repliğin daha sakin okunduğu take hangisi?",
+    autocomplete: "off",
+  });
+  nodes.chatSend = el("button", { type: "submit", class: "primary", text: "Sor" });
+  nodes.chatLeft = el("span", { class: "count", text: "" });
+  nodes.chatNote = el("p", { class: "hint", text: "" });
+
+  const chatForm = el(
+    "form",
+    {
+      class: "chat-form",
+      onSubmit: (event) => {
+        event.preventDefault();
+        const message = nodes.chatInput.value.trim();
+        if (!message) return;
+        nodes.chatInput.value = "";
+        handlers.onChat(message);
+      },
+    },
+    [nodes.chatInput, nodes.chatSend]
+  );
+
+  nodes.chatPanel = el("section", { class: "panel" }, [
+    el("h2", {}, []),
+    nodes.chatNote,
+    nodes.chatLog,
+    chatForm,
+  ]);
+  nodes.chatPanel.firstChild.append(document.createTextNode("Asistan "), nodes.chatLeft);
+
   // --- Adaylar ---
   nodes.candidates = el("div", { class: "candidates" });
   nodes.candidateCount = el("span", { class: "count", text: "" });
@@ -180,9 +217,45 @@ export function createUI(root, handlers) {
   timelinePanel.firstChild.append(document.createTextNode("Kaba kurgu "), nodes.total);
 
   root.append(bar, el("main", { class: "layout" }, [
-    el("div", { class: "column" }, [searchPanel, candidatePanel]),
+    el("div", { class: "column" }, [nodes.chatPanel, searchPanel, candidatePanel]),
     el("div", { class: "column" }, [timelinePanel]),
   ]));
+
+  function renderChat(state) {
+    const chat = state.chat;
+    nodes.chatInput.disabled = !chat.available || chat.busy;
+    nodes.chatSend.disabled = !chat.available || chat.busy;
+    nodes.chatLeft.textContent = chat.available
+      ? `(${chat.messagesLeft} mesaj hakkı)`
+      : "(kapalı)";
+    nodes.chatNote.textContent = chat.available
+      ? "Doğal dille sor. Asistan kütüphanede arıyor ve timeline'a öneri koyuyor; render etmiyor."
+      : chat.reason || "Asistan kapalı.";
+
+    nodes.chatLog.replaceChildren();
+    for (const message of chat.messages) {
+      const bubble = el("div", { class: `bubble bubble-${message.role}` }, [
+        el("p", { class: "bubble-text", text: message.text }),
+      ]);
+      // Ajanın hangi araçları çağırdığını göstermek demonun en anlatıcı kısmı
+      if (message.toolCalls?.length) {
+        bubble.appendChild(
+          el(
+            "div",
+            { class: "tool-trace" },
+            message.toolCalls.map((call) =>
+              el("span", { class: "tool-chip", text: call.name })
+            )
+          )
+        );
+      }
+      nodes.chatLog.appendChild(bubble);
+    }
+    if (chat.busy) {
+      nodes.chatLog.appendChild(el("p", { class: "hint", text: "Asistan düşünüyor…" }));
+    }
+    nodes.chatLog.scrollTop = nodes.chatLog.scrollHeight;
+  }
 
   function renderCandidates(state) {
     nodes.candidates.replaceChildren();
@@ -321,6 +394,7 @@ export function createUI(root, handlers) {
       nodes.nowPlaying.textContent = "Oynatılmıyor";
     }
 
+    renderChat(state);
     renderCandidates(state);
     renderTimeline(state);
   }

@@ -153,6 +153,53 @@ console.log("\n=== store ===");
 
   store.clearTimeline();
   check("temizlendi", store.getState().timeline, []);
+
+  // --- Asistan sonucunun uygulanması ---
+  // Sayfa içi sohbet ile WebMCP araçları aynı timeline'a yazıyor. Kural store'da
+  // tek yerde durduğu için iki giriş kapısı ayrışamıyor.
+  console.log("\n=== asistan sonucu ===");
+  const agentCandidates = [
+    candidate("S01_T03:1:0", 0, 1340),
+    candidate("S01_T01:1:0", 0, 820),
+  ];
+
+  const applied = store.applyAgentResult({
+    candidates: agentCandidates,
+    proposal: ["S01_T01:1:0", "S01_T03:1:0"],
+  });
+  check("adaylar yazıldı", applied.candidates, 2);
+  check("öneri uygulandı", applied.segments, 2);
+  check("düşen kimlik yok", applied.dropped, []);
+  check("ajanın verdiği sıra korundu", store.getState().timeline[0].take_id, "S01_T01");
+
+  // Çözülemeyen kimlik sessizce yutulmamalı
+  const partial = store.applyAgentResult({
+    candidates: agentCandidates,
+    proposal: ["S01_T03:1:0", "hayalet:9:9"],
+  });
+  check("çözülemeyen kimlik bildirildi", partial.dropped, ["hayalet:9:9"]);
+  check("çözülenler yine uygulandı", store.getState().timeline.length, 1);
+
+  // Öneri yoksa timeline'a dokunulmamalı
+  store.setTimeline(agentCandidates);
+  store.applyAgentResult({ candidates: agentCandidates, proposal: [] });
+  check("önerisiz cevap timeline'ı bozmadı", store.getState().timeline.length, 2);
+
+  store.clearTimeline();
+  store.patch({ candidates: [] });
+
+  console.log("\n=== sohbet durumu ===");
+  store.setChat({ available: false, reason: "anahtar yok" });
+  check("sohbet kapalı", store.getState().chat.available, false);
+  store.appendChatMessage({ role: "user", text: "merhaba" });
+  store.appendChatMessage({ role: "agent", text: "buldum", toolCalls: [{ name: "find_line" }] });
+  check("iki mesaj birikti", store.getState().chat.messages.length, 2);
+  check(
+    "araç izi korundu",
+    store.getState().chat.messages[1].toolCalls[0].name,
+    "find_line"
+  );
+  store.setChat({ messages: [] });
 }
 
 // --- WebMCP araçları -------------------------------------------------------

@@ -10,35 +10,18 @@ verildiğinde bu doğrudan "o tonun en iyi örneği önce" demek oluyor.
 
 from __future__ import annotations
 
-import threading
-
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from pipeline import db as ch
 from pipeline import queries, schema, search
 
-from . import config, sessions
+from . import agent, ch, config, sessions
 
 router = APIRouter(prefix="/api")
 
-_client = None
-_client_lock = threading.Lock()
-
-
-def clickhouse():
-    """Paylaşılan ClickHouse istemcisi. Hata olursa bir sonraki istekte yeniden kurulur."""
-    global _client
-    with _client_lock:
-        if _client is None:
-            _client = ch.connect()
-        return _client
-
-
-def drop_client() -> None:
-    global _client
-    with _client_lock:
-        _client = None
+# Paylaşılan istemci server/ch.py'de: ajan araçları da aynısını kullanıyor.
+clickhouse = ch.client
+drop_client = ch.drop
 
 
 def media_url(source_url: str) -> str:
@@ -283,3 +266,68 @@ def render(body: RenderRequest, request: Request, response: Response) -> dict:
             f"çalışıyor ve kredi harcamıyor. Bakiye: {session['credits']}."
         ),
     )
+
+
+# --- Sayfa içi sohbet (ADK ajanı) ---
+#
+# Bu uç harici ajanın YERİNE geçmiyor, ajanı OLMAYAN kullanıcı için var. WebMCP
+# araçları doğrudan API'ye gidiyor; ChatGPT gibi bir istemci zaten LLM olduğu için
+# parametre eşleştirmesini ikinci bir modele yaptırmak gecikmeden başka bir şey
+# eklemezdi. Ayrıntı: server/agent.py
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=config.MAX_CHAT_MESSAGE_CHARS)
+
+
+@router.get("/chat/status")
+def chat_status(request: Request, response: Response) -> dict:
+    """Sohbet kullanılabilir mi. Arayüz kutuyu buna göre gösteriyor."""
+    session = current_session(request, response)
+    return {
+        "available": agent.available(),
+        "model": agent.MODEL if agent.available() else None,
+        "messages_left": max(0, config.MAX_CHAT_MESSAGES - int(session.get("chat_used", 0))),
+        "reason": None
+        if agent.available()
+        else "Sunucuda GEMINI_API_KEY tanımlı değil. Arama paneli, timeline ve "
+        "önizleme sohbet olmadan çalışıyor.",
+    }
+
+
+@router.post("/chat")
+async def chat(body: ChatRequest, request: Request, response: Response) -> dict:
+    session = current_session(request, response)
+
+    if not agent.available():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Sohbet devre dışı: sunucuda GEMINI_API_KEY yok. Arama paneli, "
+                "timeline, önizleme ve provenance sohbet olmadan çalışıyor."
+            ),
+        )
+
+    try:
+        left = sessions.consume_chat(session["id"], config.MAX_CHAT_MESSAGES)
+    except sessions.ChatLimitReached as limit:
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Bu oturumda sohbet sınırına ulaşıldı ({limit.limit} mesaj). "
+                "Arama paneli ve timeline çalışmaya devam ediyor."
+            ),
+        )
+
+    try:
+        result = await agent.ask(session["id"], body.message)
+    except agent.AgentUnavailable as error:
+        raise HTTPException(status_code=503, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Ajan cevap veremedi: {error}")
+
+    return {
+        **result,
+        "messages_left": left,
+        "session": session_payload(session),
+    }

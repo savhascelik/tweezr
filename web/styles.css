@@ -419,3 +419,74 @@ button.ghost:hover {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* --- Sayfa içi asistan --- */
+
+.chat-log {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  margin-bottom: 0.6rem;
+}
+
+.chat-log:empty {
+  margin-bottom: 0;
+}
+
+.bubble {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.88rem;
+}
+
+.bubble-user {
+  border-left: 3px solid var(--line);
+}
+
+.bubble-agent {
+  border-left: 3px solid var(--accent);
+}
+
+.bubble-error {
+  border-left: 3px solid var(--error);
+  color: var(--error);
+}
+
+.bubble-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Ajanın hangi araçları çağırdığı. Demoda en anlatıcı kısım: kararın
+   nasıl verildiği görünür oluyor. */
+.tool-trace {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--line);
+}
+
+.tool-chip {
+  padding: 0.1rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--dim);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.chat-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+}
+
+.chat-form input:disabled {
+  opacity: 0.5;
+}

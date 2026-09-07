@@ -51,6 +51,17 @@ export function libraryStats() {
   return request("/api/library/stats");
 }
 
+export function chatStatus() {
+  return request("/api/chat/status");
+}
+
+export function sendChat(message) {
+  return request("/api/chat", {
+    method: "POST",
+    body: JSON.stringify({ message }),
+  });
+}
+
 export function requestRender(segments) {
   return request("/api/render", {
     method: "POST",

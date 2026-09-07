@@ -243,6 +243,146 @@ def main() -> int:
         1,  # sadece açılış bakiyesi
     )
 
+    print("\n=== sohbet ucu (anahtar yok) ===")
+    with TestClient(app) as client:
+        status = client.get("/api/chat/status")
+        check("durum 200", status.status_code, 200)
+        body = status.json()
+        check("sohbet kapalı", body["available"], False)
+        check_that(
+            "sebep anahtarı söylüyor",
+            "GEMINI_API_KEY" in (body["reason"] or ""),
+            body["reason"],
+        )
+        check_that(
+            "sebep ürünün çalıştığını söylüyor",
+            "timeline" in (body["reason"] or "").lower(),
+            body["reason"],
+        )
+
+        attempt = client.post("/api/chat", json={"message": "en sakin take hangisi"})
+        check("sohbet 503", attempt.status_code, 503)
+        check_that(
+            "503 alternatif sunuyor",
+            "panel" in attempt.json()["detail"].lower(),
+            attempt.json()["detail"],
+        )
+
+        check("boş mesaj 422", client.post("/api/chat", json={"message": ""}).status_code, 422)
+        check(
+            "çok uzun mesaj 422",
+            client.post("/api/chat", json={"message": "x" * 1001}).status_code,
+            422,
+        )
+
+    print("\n=== sohbet sayacı atomikliği ===")
+    # Kredi ile aynı sebep: iki eşzamanlı mesaj aynı sayacı okuyup ikisi de geçerse
+    # sınır anlamsızlaşır. Sohbet krediyle DEĞİL ayrı sayaçla ölçülüyor.
+    chat_session = sessions.create(ip="test")
+    allowed = 0
+    blocked = 0
+    chat_lock = threading.Lock()
+
+    def send() -> None:
+        nonlocal allowed, blocked
+        try:
+            sessions.consume_chat(chat_session["id"], 5)
+            with chat_lock:
+                allowed += 1
+        except sessions.ChatLimitReached:
+            with chat_lock:
+                blocked += 1
+
+    threads = [threading.Thread(target=send) for _ in range(15)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    check("sınır kadar geçti", allowed, 5)
+    check("fazlası engellendi", blocked, 10)
+    check("kredi etkilenmedi", sessions.get(chat_session["id"])["credits"], config.GUEST_CREDITS)
+
+    print("\n=== ajan araçları (LLM olmadan) ===")
+    if clickhouse is None:
+        print("  ATLANDI    ClickHouse yok")
+    else:
+        from server import agent_tools
+
+        # Araçlar config.DEMO_PROJECT'i çağrı anında okuyor. Bu bir güvenlik
+        # özelliği: ajan başka bir projeye bakmaya ikna edilemiyor. Test için
+        # geçici olarak izole projeye yönlendiriyoruz.
+        original_project = config.DEMO_PROJECT
+        config.DEMO_PROJECT = API_TEST_PROJECT
+        try:
+            agent_tools.new_collection()
+
+            found = agent_tools.find_line("I never asked for this")
+            check("find_line 3 buldu", found["found"], 3)
+            check("en iyi calm", found["candidates"][0]["tone"], "calm")
+            check_that(
+                "aday kaynağını taşıyor",
+                found["candidates"][0]["source"].startswith("gs://"),
+                found["candidates"][0]["source"],
+            )
+            check("çağrı kaydedildi", agent_tools.collection()["tool_calls"][0]["name"], "find_line")
+
+            calm = agent_tools.find_line("I never asked for this", tone="calm")
+            check("ton filtresi", calm["found"], 1)
+
+            # Hatalar exception değil, ajanın okuyup düzeltebileceği sözlük
+            bad_tone = agent_tools.find_line("x", tone="sarcastic")
+            check_that("bilinmeyen ton hata döndü", "error" in bad_tone, bad_tone)
+            check("izin verilen tonlar listelendi", len(bad_tone["allowed_tones"]), 6)
+
+            long_phrase = agent_tools.find_line(" ".join(["go"] * 50))
+            check_that("çok uzun cümle reddedildi", "error" in long_phrase, long_phrase)
+
+            empty = agent_tools.find_line("   ")
+            check_that("boş cümle reddedildi", "error" in empty, empty)
+
+            missing = agent_tools.find_line("helicopter")
+            check("bulunamayan 0", missing["found"], 0)
+            check_that(
+                "yol gösteriyor",
+                "get_library_stats" in missing["message"],
+                missing["message"],
+            )
+
+            # Öneri: adaylar bu konuşmada bulunmuş olmalı
+            agent_tools.new_collection()
+            orphan = agent_tools.assemble_proposal(["S01_T03:1:800"])
+            check_that("aday yoksa öneri reddedildi", "error" in orphan, orphan)
+
+            agent_tools.new_collection()
+            agent_tools.find_line("I never asked for this")
+            ids = [c["id"] for c in agent_tools.collection()["candidates"][:2]]
+            proposed = agent_tools.assemble_proposal(ids)
+            check("iki parça önerildi", proposed["proposed_segments"], 2)
+            check("render edilmedi", proposed["rendered"], False)
+            check("öneri toplayıcıda", agent_tools.collection()["proposal"], ids)
+            check_that(
+                "mesaj insanın değiştirebileceğini söylüyor",
+                "change it" in proposed["message"],
+                proposed["message"],
+            )
+
+            unknown = agent_tools.assemble_proposal(["yok:1:0"])
+            check_that("bilinmeyen id reddedildi", "error" in unknown, unknown)
+            check_that(
+                "mevcut id'ler listelendi",
+                len(unknown["available_ids"]) == 3,
+                unknown,
+            )
+
+            check_that("boş liste reddedildi", "error" in agent_tools.assemble_proposal([]), "")
+
+            stats = agent_tools.get_library_stats()
+            check("kütüphane istatistiği", stats["takes"], 3)
+            check_that("tonlar JSON'a çevrilebilir", isinstance(stats["tones"], list), stats)
+        finally:
+            config.DEMO_PROJECT = original_project
+
     if clickhouse is not None:
         # Test projesini bırakmıyoruz, geliştirme kütüphanesini kirletmesin
         clickhouse.command(

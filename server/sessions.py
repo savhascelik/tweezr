@@ -28,7 +28,12 @@ CREATE TABLE IF NOT EXISTS sessions (
     credits     INTEGER NOT NULL,
     ip          TEXT,
     created_at  TEXT NOT NULL,
-    last_seen   TEXT NOT NULL
+    last_seen   TEXT NOT NULL,
+    -- Sohbet krediyle DEĞİL ayrı bir sayaçla ölçülüyor: farklı bir kaynak.
+    -- Kredi render ve ingest için; sohbet bir LLM çağrısı ve bedava bırakılırsa
+    -- açık bir LLM ucu olur. Sayı ile sınırlamak jürinin demoyu yarıda kesmesini
+    -- de engelliyor.
+    chat_used   INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS ledger (
@@ -75,6 +80,14 @@ def connection(write: bool = False):
 def init_db() -> None:
     with connection() as conn:
         conn.executescript(SCHEMA)
+        # CREATE TABLE IF NOT EXISTS mevcut tabloya kolon eklemiyor. Geliştirme
+        # sırasında oluşmuş bir veritabanı chat_used olmadan kalır ve her sohbet
+        # isteği düşer, o yüzden burada telafi ediyoruz.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(sessions)")}
+        if "chat_used" not in columns:
+            conn.execute(
+                "ALTER TABLE sessions ADD COLUMN chat_used INTEGER NOT NULL DEFAULT 0"
+            )
 
 
 def as_dict(row: sqlite3.Row | None) -> dict | None:
@@ -179,6 +192,36 @@ def charge(session_id: str, amount: int, reason: str) -> int:
         )
 
     return remaining
+
+
+class ChatLimitReached(Exception):
+    def __init__(self, limit: int):
+        self.limit = limit
+        super().__init__(f"Bu oturum için sohbet sınırı ({limit}) doldu")
+
+
+def consume_chat(session_id: str, limit: int) -> int:
+    """Sohbet sayacını atomik olarak artırır, kalan hakkı döner.
+
+    charge() ile aynı kilitleme sebebi: eşzamanlı iki mesaj aynı sayacı okuyup
+    ikisi de geçerse sınır anlamsızlaşır.
+    """
+    with connection(write=True) as conn:
+        row = conn.execute(
+            "SELECT chat_used FROM sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        if row is None:
+            raise ChatLimitReached(limit)
+
+        used = int(row["chat_used"])
+        if used >= limit:
+            raise ChatLimitReached(limit)
+
+        conn.execute(
+            "UPDATE sessions SET chat_used = ?, last_seen = ? WHERE id = ?",
+            (used + 1, now(), session_id),
+        )
+    return limit - (used + 1)
 
 
 def history(session_id: str, limit: int = 20) -> list[dict]:

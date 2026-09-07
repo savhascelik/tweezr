@@ -62,6 +62,8 @@ session ve yeni bir kota alıyor.
 | `GET /api/word/{word}` | kelimenin geçtiği yerler (kelime cımbızlama) | 0 |
 | `GET /api/library/stats` | kütüphanede ne var | 0 |
 | `POST /api/render` | **henüz 503**, kredi harcamıyor | 1 |
+| `GET /api/chat/status` | asistan açık mı, kaç mesaj hakkı kaldı | 0 |
+| `POST /api/chat` | sayfa içi asistan (ADK) | sayaç |
 | `GET /media/*` | medya, HTTP range destekli | 0 |
 
 `find_line` **LLM gerektirmiyor**: cümle → ClickHouse → sıralı aday. Doğal dili araç
@@ -73,6 +75,58 @@ filtresi verildiğinde bu doğrudan "o tonun en iyi örneği önce" oluyor.
 
 `/api/render` bilerek 503 dönüyor. Çalışmayan bir iş için kredi düşürmek sessiz veri
 kaybı olur; işçi devreye girene kadar kredi harcanmıyor ve test bunu doğruluyor.
+
+## ADK ajanı neden WebMCP'nin altında değil
+
+Blueprint "WebMCP `find_line` → ADK ajanı" diyordu. Yanlıştı.
+
+Harici ajan (ChatGPT in-app browser) **zaten bir LLM**. `find_line`'ı yapılandırılmış
+parametrelerle çağırıyor. Onu bir de bizim ajanımızdan geçirmek, ilk modelin çoktan
+yaptığı parametre eşleştirmesini ikinci bir modele yaptırmak olur — gecikme ve hata
+yüzeyinden başka bir şey eklemez. O yüzden WebMCP araçları doğrudan API'ye gidiyor ve
+**arama Gemini anahtarı olmadan tam çalışıyor.**
+
+ADK ajanının işi başka: **ajanı olmayan kullanıcı.** Çoğu insan ChatGPT in-app
+browser'da gezmiyor. Sayfa kendi asistanını taşıyınca ürün harici bir ajan olmadan da
+doğal dille kullanılabiliyor, ve iki giriş kapısı da aynı ClickHouse sorgularının
+üstünde çalışıyor.
+
+### Üç araç, LLM'siz test edilebilir
+
+`agent_tools.py` içindeki fonksiyonlar saf: `find_line`, `assemble_proposal`,
+`get_library_stats`. LLM olmadan çağrılabiliyorlar ve testleri de öyle koşuyor.
+
+İki şey kasıtlı:
+
+**Docstring'ler ajanın gördüğü şemadır.** ADK araç tanımını imza ve docstring'den
+üretiyor, yani o metin dokümantasyon değil arayüz. Bu yüzden İngilizce ve fonksiyonun
+ne yaptığından çok **ne zaman kullanılacağını** anlatıyorlar.
+
+**Hatalar exception değil sözlük.** `{"error": ..., "allowed_tones": [...]}` dönüyor.
+Ajan okuyup düzeltebiliyor; exception ona sadece "başarısız" derdi.
+
+**Öneri tarayıcıya toplayıcı üzerinden dönüyor.** Ajan sunucuda koşuyor, sayfanın
+store'una dokunamıyor. Araç niyetini istek başına bir `ContextVar`'a yazıyor, cevap onu
+tarayıcıya taşıyor ve sayfa `store.applyAgentResult()` ile uyguluyor — yani harici ajan
+ile sayfa içi sohbet aynı timeline'ı aynı yoldan değiştiriyor. `ContextVar` global bir
+sözlük olsaydı iki kullanıcının önerisi birbirine bulaşırdı.
+
+`config.DEMO_PROJECT` araçlarda sabit. Bu bir güvenlik özelliği: ajan başka bir projeye
+bakmaya ikna edilemiyor.
+
+### Anahtar yoksa
+
+Sohbet kapanıyor, ürün çalışmaya devam ediyor: arama paneli, timeline, önizleme ve
+provenance hepsi LLM'siz. `/api/chat/status` sebebi açıkça söylüyor ve arayüz onu
+gösteriyor. Bu bilinçli — anahtarsız bir ortamda bile ürünün ne yaptığı görülebilmeli.
+
+### Sohbet krediyle değil sayı ile ölçülüyor
+
+Kredi render ve ingest için. Sohbet bir LLM çağrısı, farklı bir kaynak, ve bedava
+bırakmak açık bir LLM ucu demek. `MAX_CHAT_MESSAGES` (40) sayacı `chat_used`
+kolonunda ve `consume_chat` kredi düşürmeyle aynı `BEGIN IMMEDIATE` kilidini
+kullanıyor — iki eşzamanlı mesaj aynı sayacı okuyup ikisi de geçerse sınır anlamsız
+olurdu.
 
 ## Çalıştırma
 
@@ -91,10 +145,16 @@ docker compose -f dev\docker-compose.yml up -d
 .venv\Scripts\python.exe -m server.test_api
 ```
 
-38 test: güvenlik header'ları, oturum oluşturma ve korunması, çerez bayrakları, oturum
+70 test: güvenlik header'ları, oturum oluşturma ve korunması, çerez bayrakları, oturum
 kimliğinin gövdeye sızmaması, girdi doğrulama, ClickHouse aramasının sıralaması ve
-provenance alanları, render'ın kredi harcamaması, ve kredi defterinin atomikliği.
+provenance alanları, render'ın kredi harcamaması, kredi defterinin ve sohbet sayacının
+atomikliği, sohbetin anahtarsız durumda ne söylediği, ve ajan araçlarının LLM olmadan
+tüm yolları.
 
-Atomiklik testi bakiyenin iki katı kadar eşzamanlı `charge` çağırıyor ve tam bakiye
-kadarının geçtiğini doğruluyor. Bu olmadan iki eşzamanlı render aynı krediyi iki kere
-harcayabilir.
+Atomiklik testleri bakiyenin/sınırın iki üç katı kadar eşzamanlı çağrı yapıp tam
+sınır kadarının geçtiğini doğruluyor. Bu olmadan iki eşzamanlı render aynı krediyi iki
+kere harcayabilir.
+
+Testler hermetik: kontrat fixture'ını `__api_test__` projesine yazıp sonunda siliyorlar.
+Önce "demo"da ne varsa ona bakıyorlardı ve `dev/seed_demo` o veriyi değiştirdiğinde üç
+test düşmüştü.

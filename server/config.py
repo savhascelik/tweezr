@@ -41,6 +41,12 @@ COST_INGEST_PER_MINUTE = 1
 MAX_SESSIONS_PER_IP_PER_HOUR = int(os.environ.get("MAX_SESSIONS_PER_IP_PER_HOUR", "30"))
 MAX_CONCURRENT_RENDERS_PER_SESSION = 1
 MAX_PHRASE_WORDS = 40          # sorgu şişirmeyi engelle
+
+# Sohbet krediyle değil sayı ile ölçülüyor: bir LLM çağrısı, kredinin ölçtüğü
+# render/ingest'ten farklı bir kaynak. Bedava bırakmak açık bir LLM ucu demek.
+# Sınır demoyu rahat bitirecek kadar geniş, kötüye kullanımı caydıracak kadar dar.
+MAX_CHAT_MESSAGES = int(os.environ.get("MAX_CHAT_MESSAGES", "40"))
+MAX_CHAT_MESSAGE_CHARS = 1000
 MAX_UPLOAD_MB = 100
 MAX_UPLOAD_SECONDS = 180
 

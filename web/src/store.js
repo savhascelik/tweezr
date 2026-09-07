@@ -20,6 +20,8 @@ const state = {
   playback: { playing: false, index: -1, offsetMs: 0 },
   status: { kind: "idle", message: "" },
   webmcp: { available: false, registered: 0 },
+  // Sayfa içi sohbet. Harici ajanın yerine geçmiyor, ajanı OLMAYAN kullanıcı için.
+  chat: { available: false, reason: "", messagesLeft: 0, busy: false, messages: [] },
 };
 
 const listeners = new Set();
@@ -84,6 +86,48 @@ export function clearTimeline() {
 
 export function setPlayback(playback) {
   state.playback = { ...state.playback, ...playback };
+  notify();
+}
+
+export function setChat(chat) {
+  state.chat = { ...state.chat, ...chat };
+  notify();
+}
+
+/**
+ * Sayfa içi asistanın sonucunu duruma uygular.
+ *
+ * Kural burada duruyor, sohbet çağrısının içinde değil: ajanın bulduğu adaylar ve
+ * koyduğu öneri, WebMCP araçlarının değiştirdiği AYNI timeline'a gidiyor. İki giriş
+ * kapısı için iki ayrı uygulama kuralı olsa store ayrışırdı.
+ */
+export function applyAgentResult({ candidates = [], proposal = [] } = {}) {
+  if (candidates.length) {
+    state.candidates = candidates;
+  }
+
+  // Öneri kimlik listesi; segmentleri bu turdan gelen adaylardan çözüyoruz.
+  const known = new Map(
+    (candidates.length ? candidates : state.candidates).map((item) => [item.id, item])
+  );
+  const resolved = proposal.map((id) => known.get(id)).filter(Boolean);
+  const dropped = proposal.filter((id) => !known.has(id));
+
+  if (resolved.length) {
+    state.timeline = resolved.map(normalizeSegment);
+  }
+
+  notify();
+  return {
+    candidates: state.candidates.length,
+    segments: state.timeline.length,
+    // Sessizce yutmuyoruz: çözülemeyen kimlik varsa çağıran bilsin
+    dropped,
+  };
+}
+
+export function appendChatMessage(message) {
+  state.chat = { ...state.chat, messages: [...state.chat.messages, message] };
   notify();
 }
 

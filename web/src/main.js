@@ -85,6 +85,36 @@ const actions = {
     store.setPlayback({ playing: false, index: -1, offsetMs: 0 });
   },
 
+  /**
+   * Sayfa içi asistan. Ajanın bulduğu adaylar ve koyduğu öneri, WebMCP araçlarının
+   * kullandığı AYNI store işlemlerinden geçiyor — yani iki giriş kapısı da tek
+   * timeline'ı değiştiriyor, insan hangisini kullandığını ayırt etmek zorunda değil.
+   */
+  async chat(message) {
+    store.appendChatMessage({ role: "user", text: message });
+    store.setChat({ busy: true });
+    try {
+      const result = await api.sendChat(message);
+      const applied = store.applyAgentResult(result);
+      if (applied.dropped.length) {
+        console.warn("asistan çözülemeyen aday kimliği döndürdü", applied.dropped);
+      }
+
+      store.appendChatMessage({
+        role: "agent",
+        text: result.reply || "(boş cevap)",
+        toolCalls: result.tool_calls ?? [],
+      });
+      store.setChat({ busy: false, messagesLeft: result.messages_left ?? 0 });
+      if (result.session) store.patch({ session: result.session });
+      return result;
+    } catch (error) {
+      store.appendChatMessage({ role: "error", text: error.message });
+      store.setChat({ busy: false });
+      throw error;
+    }
+  },
+
   async render() {
     const { timeline } = store.getState();
     if (!timeline.length) {
@@ -113,6 +143,7 @@ const ui = createUI(root, {
   onPlay: actions.play,
   onStop: actions.stop,
   onRender: () => actions.render().catch(() => {}),
+  onChat: (message) => actions.chat(message).catch(() => {}),
 });
 
 const player = createPlayer({
@@ -147,6 +178,19 @@ export const ready = (async () => {
 
     const library = await api.libraryStats();
     store.patch({ library: library.stats });
+
+    // Sohbet anahtar yoksa kapalı. Ürünün geri kalanı bundan etkilenmiyor, o yüzden
+    // hata olsa bile başlatmayı düşürmüyoruz.
+    try {
+      const chat = await api.chatStatus();
+      store.setChat({
+        available: chat.available,
+        reason: chat.reason ?? "",
+        messagesLeft: chat.messages_left ?? 0,
+      });
+    } catch (error) {
+      store.setChat({ available: false, reason: `Asistan durumu okunamadı: ${error.message}` });
+    }
 
     const webmcp = await installTools({ actions, store });
 
