@@ -76,7 +76,8 @@ def main() -> int:
 
     media_dir = config.MEDIA_DIR
     media_dir.mkdir(parents=True, exist_ok=True)
-    docs_dir = config.APP_ROOT / "scratch" / "seed"
+    # Bu ikisi de commit ediliyor: dağıtılan imajda bulunmaları gerekiyor.
+    docs_dir = config.DEMO_TAKES_DIR
     docs_dir.mkdir(parents=True, exist_ok=True)
 
     documents: list[dict] = []

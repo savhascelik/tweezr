@@ -57,8 +57,20 @@ MAX_UPLOAD_SECONDS = 180
 # üye hesapları olurdu, o da bu aşamada yok.
 SESSION_DB = Path(os.environ.get("SESSION_DB", APP_ROOT / "scratch" / "sessions.db"))
 
-# Yerel medya. Üretimde GCS signed URL'e geçecek.
-MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", APP_ROOT / "scratch" / "media"))
+# Render çıktıları. Konteynerde /tmp'e yönlendiriliyor: Cloud Run'da imaj katmanı
+# salt okunur sayılmalı ve çıktılar zaten geçici.
+RENDER_DIR = Path(os.environ.get("RENDER_DIR", APP_ROOT / "scratch" / "renders"))
+
+# Demo korpusunun medyası. scratch/ DEĞİL, çünkü bu üretilen bir çıktı değil
+# **içerik**: dağıtılan imajda bulunmak zorunda, yoksa jüri hiçbir şey duyamaz.
+# Kodun ürettiği şeyi commit etmiyoruz ama ürünün gösterdiği şeyi ediyoruz.
+#
+# Kullanıcının kendi yüklediği medya buraya GİRMEZ; o iş GCS'e taşınacak.
+MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", APP_ROOT / "demo" / "media"))
+
+# Demo korpusunun ingest dokümanları. Dağıtılan örnek ClickHouse'u bunlardan
+# dolduruyor, böylece kutu açıldığında arama çalışıyor.
+DEMO_TAKES_DIR = Path(os.environ.get("DEMO_TAKES_DIR", APP_ROOT / "demo" / "takes"))
 
 # Frontend. Tek origin: aynı sunucu hem API'yi hem sayfayı veriyor.
 #

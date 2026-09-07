@@ -19,7 +19,12 @@ from pathlib import Path
 from . import config
 
 # Testler gerçek oturum defterine dokunmasın. init_db'den ÖNCE değiştirilmeli.
-config.SESSION_DB = Path(tempfile.mkdtemp(prefix="cinema-test-")) / "sessions.db"
+_scratch = Path(tempfile.mkdtemp(prefix="cinema-test-"))
+config.SESSION_DB = _scratch / "sessions.db"
+
+# Medya dizini de geçici: testler kendi WAV'ını üretiyor ve o dosyanın commit edilen
+# demo korpusunun içine düşmemesi gerekiyor.
+config.MEDIA_DIR = _scratch / "media"
 
 # Testler kendi ClickHouse projesini kuruyor. Önceden "demo"da ne varsa ona
 # bakıyorlardı ve dev/seed_demo o veriyi değiştirince üç test düştü — yani testler

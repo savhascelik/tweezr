@@ -1,0 +1,77 @@
+{
+  "project_id": "demo",
+  "takes": [
+    {
+      "take_id": "S01_T05",
+      "scene": "S01",
+      "camera": "B",
+      "speaker": "MAYA",
+      "source_url": "S01_T05.wav",
+      "lines": [
+        {
+          "line_id": 1,
+          "text": "I never asked for this. Just let me go.",
+          "tone": "whisper",
+          "tone_score": 0.9,
+          "words": [
+            {
+              "word": "I",
+              "start_ms": 0,
+              "end_ms": 200,
+              "confidence": 0.8882
+            },
+            {
+              "word": "never",
+              "start_ms": 200,
+              "end_ms": 380,
+              "confidence": 0.994
+            },
+            {
+              "word": "asked",
+              "start_ms": 380,
+              "end_ms": 740,
+              "confidence": 0.9849
+            },
+            {
+              "word": "for",
+              "start_ms": 740,
+              "end_ms": 1000,
+              "confidence": 0.9964
+            },
+            {
+              "word": "this.",
+              "start_ms": 1000,
+              "end_ms": 1200,
+              "confidence": 0.9976
+            },
+            {
+              "word": "Just",
+              "start_ms": 2040,
+              "end_ms": 2560,
+              "confidence": 0.961
+            },
+            {
+              "word": "let",
+              "start_ms": 2560,
+              "end_ms": 2820,
+              "confidence": 0.9926
+            },
+            {
+              "word": "me",
+              "start_ms": 2820,
+              "end_ms": 3000,
+              "confidence": 0.9988
+            },
+            {
+              "word": "go.",
+              "start_ms": 3000,
+              "end_ms": 3260,
+              "confidence": 0.9978
+            }
+          ],
+          "tone_reason": "seed: SAPI rate=-1 volume=30"
+        }
+      ]
+    }
+  ]
+}

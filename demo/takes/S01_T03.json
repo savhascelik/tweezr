@@ -1,0 +1,86 @@
+{
+  "project_id": "demo",
+  "takes": [
+    {
+      "take_id": "S01_T03",
+      "scene": "S01",
+      "camera": "A",
+      "speaker": "MAYA",
+      "source_url": "S01_T03.wav",
+      "lines": [
+        {
+          "line_id": 1,
+          "text": "I never asked for this.",
+          "tone": "calm",
+          "tone_score": 0.9,
+          "words": [
+            {
+              "word": "I",
+              "start_ms": 0,
+              "end_ms": 220,
+              "confidence": 0.8833
+            },
+            {
+              "word": "never",
+              "start_ms": 220,
+              "end_ms": 420,
+              "confidence": 0.9872
+            },
+            {
+              "word": "asked",
+              "start_ms": 420,
+              "end_ms": 840,
+              "confidence": 0.9828
+            },
+            {
+              "word": "for",
+              "start_ms": 840,
+              "end_ms": 1100,
+              "confidence": 0.9951
+            },
+            {
+              "word": "this.",
+              "start_ms": 1100,
+              "end_ms": 1340,
+              "confidence": 0.9968
+            }
+          ],
+          "tone_reason": "seed: SAPI rate=-2 volume=100"
+        },
+        {
+          "line_id": 2,
+          "text": "Just let me go.",
+          "tone": "calm",
+          "tone_score": 0.9,
+          "words": [
+            {
+              "word": "Just",
+              "start_ms": 2380,
+              "end_ms": 2900,
+              "confidence": 0.9623
+            },
+            {
+              "word": "let",
+              "start_ms": 2900,
+              "end_ms": 3140,
+              "confidence": 0.9818
+            },
+            {
+              "word": "me",
+              "start_ms": 3140,
+              "end_ms": 3320,
+              "confidence": 0.9982
+            },
+            {
+              "word": "go.",
+              "start_ms": 3320,
+              "end_ms": 3620,
+              "confidence": 0.998
+            }
+          ],
+          "tone_reason": "seed: SAPI rate=-2 volume=100"
+        }
+      ]
+    }
+  ]
+}

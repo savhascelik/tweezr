@@ -64,6 +64,21 @@ vermek olur. Bu yüzden `faster-whisper`, CPU'da, ücretsiz ve tekrar üretilebi
 **Ton bir prozodi + anlam problemi.** "Bu take daha sakin" demek Whisper'ın
 yapamadığı şey. Gemini multimodal orada devrede, take başına tek çağrı.
 
+## Klasörler
+
+| Dizin | İçerik |
+| --- | --- |
+| `pipeline/` | Hizalama, ton, ingest, ClickHouse sorguları |
+| `server/` | FastAPI: API, oturum, kredi, render, ADK asistanı |
+| `web/` | Timeline arayüzü, sanal kırpma, WebMCP araçları, onay penceresi |
+| `demo/` | Demo korpusu — **içerik**, imajda bulunmak zorunda |
+| `dev/` | Yerel ClickHouse, korpus üretme/yükleme, deploy doğrulama |
+| `scratch/` | Üretilen çöp, tamamen gitignore'da |
+
+`demo/` ile `scratch/` arasındaki ayrım kasıtlı: kodun ürettiği şeyi commit etmiyoruz
+ama **ürünün gösterdiği şeyi** ediyoruz. Demo medyası imajda olmazsa jüri hiçbir şey
+duyamaz.
+
 ## Kurulum
 
 Tüm komutlar bu dizinden çalışıyor.
@@ -88,9 +103,27 @@ sunucu sadece sorguluyor.
 ## Çalıştırma
 
 ```powershell
-.venv\Scripts\python.exe -m pipeline.ingest pipeline\fixture.json --replace
+.venv\Scripts\python.exe -m dev.load_demo          # demo korpusunu ClickHouse'a yaz
 .venv\Scripts\python.exe -m uvicorn server.main:app --reload --port 8080
 ```
+
+Demo korpusunu yeniden üretmek için (Windows SAPI gerekiyor):
+`.venv\Scripts\python.exe -m dev.seed_demo`
+
+## Konteyner
+
+```powershell
+docker build -t cinema-app:dev .
+docker run --rm -p 8090:8080 --network dev_default `
+  -e CLICKHOUSE_HOST=clickhouse -e CLICKHOUSE_PORT=8123 `
+  -e CLICKHOUSE_PASSWORD=dev -e CLICKHOUSE_DATABASE=cinema cinema-app:dev
+```
+
+337 MB, tek aşama. node aşaması yok (build adımı yok) ve `faster-whisper` yok
+(transkripsiyon offline). Yerelde uçtan uca doğrulandı: sayfa, arama, medya range
+istekleri ve FFmpeg render'ı slim imajda çalışıyor.
+
+Cloud Run'a dağıtım: `DEPLOY.md`.
 
 ## Test
 

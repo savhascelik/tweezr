@@ -1,0 +1,28 @@
+# Sanal ortam ve derleme artıkları
+.venv/
+__pycache__/
+*.pyc
+
+# Geliştirme çöpü. demo/ BURADA DEĞİL: o içerik ve imajda bulunmak zorunda.
+scratch/
+
+# Kimlik bilgileri asla imaja girmez. Ortam değişkenleriyle veriliyorlar.
+.env
+.env.*
+
+# Git ve editör
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Yerel geliştirme ClickHouse'u üretimde kullanılmıyor
+dev/docker-compose.yml
+dev/clickhouse-listen.xml
+
+# Transkripsiyon yığını sunucuda çalışmıyor
+requirements-ingest.txt
+
+# Testler imaja gerekmiyor
+**/test_*.py
+**/test_*.mjs

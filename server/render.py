@@ -234,7 +234,7 @@ def run_blocking(job: Job, steps: list[dict]) -> None:
         job.mode = "video" if all(has_video(step["media"]) for step in steps) else "audio"
         suffix = ".mp4" if job.mode == "video" else ".wav"
 
-        output_dir = config.APP_ROOT / "scratch" / "renders"
+        output_dir = config.RENDER_DIR
         output_dir.mkdir(parents=True, exist_ok=True)
         # Geçici dosyaya yazıp taşıyoruz: yarım kalmış çıktı indirilebilir olmasın
         with tempfile.TemporaryDirectory() as tmp:
