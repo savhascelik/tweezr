@@ -3,6 +3,12 @@
 The SQL lives here and query strings are not built anywhere else. Parameters go through
 ClickHouse's server-side binding ({name:Type}); there is no string interpolation.
 
+WHY `projects` IS A LIST
+A visitor's uploads go into a project of their own, derived from their session cookie, so
+one person's footage does not appear in everyone else's library. A search therefore spans
+two projects: the shared demo corpus and the caller's own uploads. The read queries take
+an array so that stays a parameter rather than two queries stitched together in Python.
+
 Why phrase search is here and why it looks like this:
 
 Joining the table to itself once per word means N table scans. Instead this uses
@@ -39,7 +45,7 @@ SELECT
     end_ms,
     confidence
 FROM words
-WHERE project_id = {project:String}
+WHERE project_id IN {projects:Array(String)}
   AND word_norm = {word:String}
   AND ({tone:String} = '' OR tone = {tone:String})
 ORDER BY confidence DESC, take_id, start_ms
@@ -75,7 +81,7 @@ SELECT
         hits
     ) AS hit_texts
 FROM words
-WHERE project_id = {project:String}
+WHERE project_id IN {projects:Array(String)}
   AND (take_id, line_id) IN (
       -- Index-friendly pre-filter: only lines containing the phrase's FIRST word.
       -- With a primary key of (project_id, word_norm, start_ms) this comes straight
@@ -83,7 +89,7 @@ WHERE project_id = {project:String}
       -- filtering here is equivalent to the outer WHERE but cuts earlier.
       SELECT take_id, line_id
       FROM words
-      WHERE project_id = {project:String}
+      WHERE project_id IN {projects:Array(String)}
         AND word_norm = phrase[1]
         AND ({tone:String} = '' OR tone = {tone:String})
   )
@@ -112,7 +118,7 @@ SELECT
     end_ms,
     confidence
 FROM words
-WHERE project_id = {project:String}
+WHERE project_id IN {projects:Array(String)}
   AND (take_id, line_id) IN {pairs:Array(Tuple(String, UInt32))}
 ORDER BY take_id, line_id, start_ms
 """
@@ -132,7 +138,7 @@ SELECT arrayStringConcat(
            ' '
        ) AS text
 FROM words
-WHERE project_id = {project:String}
+WHERE project_id IN {projects:Array(String)}
 GROUP BY take_id, line_id
 ORDER BY count() DESC, take_id, line_id
 LIMIT 1
@@ -148,9 +154,11 @@ SELECT
     round(max(end_ms) / 1000, 1)   AS longest_take_seconds,
     groupUniqArray(tone)           AS tones
 FROM words
-WHERE project_id = {project:String}
+WHERE project_id IN {projects:Array(String)}
 """
 
+# Singular on purpose: dropping is destructive, and an array parameter here would make
+# "clear one project" and "clear several" look identical at the call site.
 DROP_PROJECT = """
 ALTER TABLE words DELETE WHERE project_id = {project:String}
 """

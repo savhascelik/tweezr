@@ -70,9 +70,15 @@ gcloud run deploy $SERVICE `
 
 Notes:
 
-- **`--min-instances=1`** so a judge does not wait on a cold start. An idle instance costs
-  money; drop it to `0` once judging is over.
-- **`--cpu=2`** because the FFmpeg concat is CPU work. One CPU works, just slower.
+- **`--min-instances=1`** so a judge does not wait on a cold start. That matters more now
+  that the image is 866MB: it carries the transcription stack and the Whisper model so
+  uploads work. An idle instance costs money; drop it to `0` once judging is over.
+- **`--cpu=2`** because the FFmpeg concat is CPU work, and now so is transcription. One CPU
+  works, just slower — and with `--max-instances=1` a running ingest and a render share
+  those two.
+- **`--memory=2Gi`** covers the `base` Whisper model comfortably. A larger model wants more;
+  `UPLOAD_MODEL=small` is the first thing to try if transcription quality is the complaint,
+  and the first thing to check if memory is.
 - **Secrets go through `--set-secrets`, not `--set-env-vars`.** A secret passed as an
   environment variable shows up in plain text in `gcloud run services describe` and in the
   console. Put them in Secret Manager:
@@ -92,9 +98,13 @@ Notes:
 .venv\Scripts\python.exe -m dev.check_deploy https://<service-url>
 ```
 
-25 checks: the WebMCP preconditions (https, `Origin-Agent-Cluster: ?1`, no CSP that would
+27 checks: the WebMCP preconditions (https, `Origin-Agent-Cluster: ?1`, no CSP that would
 break the tools), assets, a session established without a login, library and search, media
-HTTP range support, and a real render.
+HTTP range support, whether uploads are on, and a real render.
+
+If it reports **uploads OFF**, the image was built without `requirements-ingest.txt`. That
+is a valid deployment and the interface says so plainly, but on a URL meant to be tried by
+strangers it is the difference between a demo and a tool.
 
 ### From here it is manual, and this is the part that matters
 
@@ -106,6 +116,12 @@ The script **cannot** verify that `registerTool` succeeded; that is a browser jo
 3. Ask it to find the calmest reading of "I never asked for this"
 4. A proposal should appear on the timeline, with a provenance strip under every segment
 5. Ask it to render: the approval dialog should open and the agent should wait on it
+
+Then check the part that has nothing to do with the agent, because it is what a judge will
+try first: drop one of your own clips onto the upload card, wait for it to transcribe, and
+search a line out of it. Open the URL in a second browser profile and confirm that clip is
+**not** in the library there — uploads are per session, and that is worth seeing rather than
+taking on trust.
 
 If the tools do not appear, look at the **browser console** first. If `registerTool` was
 refused the reason is printed there; the most common cause is a missing

@@ -324,6 +324,92 @@ def main() -> int:
                 404,
             )
 
+    print("\n=== uploads ===")
+    with TestClient(app) as client:
+        status = client.get("/api/upload/status")
+        check("upload status 200", status.status_code, 200)
+        info = status.json()
+        check("limits are stated up front", info["limits"]["max_mb"], config.MAX_UPLOAD_MB)
+        check("and the price", info["cost_per_minute"], config.COST_INGEST_PER_MINUTE)
+        check_that(
+            "the accepted containers are listed",
+            ".mp4" in info["limits"]["suffixes"] and ".wav" in info["limits"]["suffixes"],
+            info["limits"]["suffixes"],
+        )
+
+        # A container we do not read is refused immediately, before any bytes are stored
+        rejected = client.post(
+            "/api/upload",
+            files={"file": ("notes.txt", b"hello", "text/plain")},
+        )
+        check_that(
+            "an unknown container is refused",
+            rejected.status_code in (422, 503),
+            f"{rejected.status_code} {rejected.text[:120]}",
+        )
+
+        # Someone else's job is absent rather than forbidden: 403 would confirm the id
+        check("an unknown job is 404", client.get("/api/upload/nope").status_code, 404)
+
+    print("\n=== upload isolation ===")
+    # A visitor's upload goes into a project derived from their session cookie, so it is
+    # not in anyone else's library. That id cannot be supplied by a caller, which is what
+    # makes the isolation hold rather than depending on a validation rule.
+    check(
+        "the upload project comes from the session id",
+        config.session_project("abc123"),
+        f"{config.UPLOAD_PROJECT_PREFIX}abc123",
+    )
+    check_that(
+        "and is not in the queryable allowlist",
+        config.session_project("abc123") not in config.ALLOWED_PROJECTS,
+    )
+    with TestClient(app) as client:
+        first = client.get("/api/session")
+        # Naming another project is still bounded by the allowlist
+        check(
+            "an unknown project is still refused",
+            client.post(
+                "/api/find_line", json={"phrase": "anything", "project": "../etc"}
+            ).status_code,
+            404,
+        )
+        check_that("the session was established", first.status_code == 200)
+
+    if clickhouse is not None:
+        print("\n=== ingest pricing and refund ===")
+        # Priced per started minute, rounded up: a twenty second clip still costs one.
+        from . import uploads as upload_worker
+
+        check("20 seconds costs one credit", upload_worker.credits_for(20), 1)
+        check("60 seconds costs one", upload_worker.credits_for(60), 1)
+        check("61 seconds costs two", upload_worker.credits_for(61), 2)
+        check("180 seconds costs three", upload_worker.credits_for(180), 3)
+
+        # A take id ends up in URLs and in ClickHouse, so it is sanitised rather than trusted
+        check("a name is sanitised", upload_worker.take_id_for("Rooftop take", 0), "ROOFTOP_TAKE")
+        check("traversal cannot survive it", upload_worker.take_id_for("../../etc", 0), "ETC")
+        check("an empty name gets a sequence", upload_worker.take_id_for("", 3), "UP04")
+        check_that(
+            "the stored filename is generated, not the browser's",
+            upload_worker.stored_name("UP01", ".MP4").startswith("UP01_")
+            and upload_worker.stored_name("UP01", ".MP4").endswith(".mp4"),
+            upload_worker.stored_name("UP01", ".MP4"),
+        )
+
+        # Work that was charged but not delivered is refunded. The alternative, charging
+        # only on success, would mean doing the work before knowing it can be paid for.
+        refund_session = sessions.create(ip="test", role="guest")
+        after_charge = sessions.charge(refund_session["id"], 2, "ingest test")
+        check("charged", after_charge, config.GUEST_CREDITS - 2)
+        check("refunded", sessions.refund(refund_session["id"], 2, "ingest failed"), config.GUEST_CREDITS)
+        entries = sessions.history(refund_session["id"])
+        check_that(
+            "the refund is a ledger row, not a rewritten balance",
+            any(entry["delta"] == 2 for entry in entries),
+            entries,
+        )
+
     print("\n=== render ===")
     if clickhouse is None:
         print("  SKIPPED    no ClickHouse")

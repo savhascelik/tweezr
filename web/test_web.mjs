@@ -623,8 +623,15 @@ console.log("\n=== i18n ===");
   );
 
   // Keys built at runtime from a variable. The prefix is what can be verified; the
-  // suffixes are covered by the tone/locale assertions above.
-  const DYNAMIC = ["tone.", "locale.", "assistant.reason."];
+  // suffixes are covered by the tone/locale assertions above and, for the upload stages,
+  // by test_ui.mjs driving each stage through render().
+  const DYNAMIC = [
+    "tone.",
+    "locale.",
+    "assistant.reason.",
+    "upload.reason.",
+    "upload.stage.",
+  ];
 
   const used = new Set();
   for (const body of sources) {

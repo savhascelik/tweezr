@@ -80,7 +80,7 @@ def main() -> int:
     print(f"\n{total} rows written in total.")
 
     project = json.loads(args.docs[0].read_text(encoding="utf-8"))["project_id"]
-    stats = client.query(queries.LIBRARY_STATS, parameters={"project": project})
+    stats = client.query(queries.LIBRARY_STATS, parameters={"projects": [project]})
     print(f"\nLibrary ({project}):")
     for name, value in zip(stats.column_names, stats.result_rows[0]):
         print(f"  {name:22} {value}")

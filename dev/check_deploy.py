@@ -98,6 +98,21 @@ def main() -> int:
                 check(ranged.status_code == 206, "media supports HTTP range",
                       f"expected 206, got {ranged.status_code}")
 
+        print("\n=== uploads ===")
+        upload = client.get("/api/upload/status")
+        if check(upload.status_code == 200, "upload status read", upload.text[:120]):
+            info = upload.json()
+            if info["available"]:
+                check(True, f"uploads on (up to {info['limits']['max_mb']} MB, "
+                            f"{info['limits']['max_seconds']}s, "
+                            f"{info['cost_per_minute']} credit/min)")
+            else:
+                # Not a failure: the product works without it, and the interface says so.
+                # But on a deployment meant to be tried by strangers it is the difference
+                # between a demo and a tool, so it is called out rather than passed over.
+                print(f"  INFO       uploads OFF: {info['reason']}")
+                print("             the image needs requirements-ingest.txt for this")
+
         print("\n=== assistant ===")
         chat = client.get("/api/chat/status")
         if check(chat.status_code == 200, "chat status read", chat.text[:120]):

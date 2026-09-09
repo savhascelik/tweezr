@@ -20,6 +20,16 @@ APP_ROOT = Path(__file__).resolve().parent.parent
 DEMO_PROJECT = "demo"
 ALLOWED_PROJECTS = frozenset({DEMO_PROJECT})
 
+# Uploads go into a project of the visitor's own, so one person's footage does not turn up
+# in everyone else's library. The id is derived from the session cookie rather than taken
+# from the request, which is what keeps it out of the allowlist argument entirely: a caller
+# cannot ask for someone else's project because they cannot name it.
+UPLOAD_PROJECT_PREFIX = "up_"
+
+
+def session_project(session_id: str) -> str:
+    return f"{UPLOAD_PROJECT_PREFIX}{session_id}"
+
 # --- Session ---
 SESSION_COOKIE = "cinema_session"
 SESSION_TTL_DAYS = 7
@@ -49,8 +59,27 @@ MAX_PHRASE_WORDS = 40          # stop query inflation
 # comfortably and narrow enough to discourage abuse.
 MAX_CHAT_MESSAGES = int(os.environ.get("MAX_CHAT_MESSAGES", "40"))
 MAX_CHAT_MESSAGE_CHARS = 1000
-MAX_UPLOAD_MB = 100
-MAX_UPLOAD_SECONDS = 180
+
+# --- Uploads ---
+# Transcription is CPU work with no upper bound of its own, so the brakes are on the input:
+# a size cap, a duration cap, one ingest at a time per session, and a per-session take
+# count so a visitor cannot fill the disk one small file at a time.
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "100"))
+MAX_UPLOAD_SECONDS = int(os.environ.get("MAX_UPLOAD_SECONDS", "180"))
+MAX_CONCURRENT_INGESTS_PER_SESSION = 1
+MAX_UPLOADS_PER_SESSION = int(os.environ.get("MAX_UPLOADS_PER_SESSION", "8"))
+
+# Containers we accept. Not a security boundary — ffmpeg decides what it can actually read
+# — but it turns "you sent a .zip" into an immediate answer instead of a failed job.
+UPLOAD_SUFFIXES = frozenset({
+    ".wav", ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac",
+    ".mp4", ".mov", ".mkv", ".webm", ".m4v",
+})
+
+# The transcription model used for uploads. `base` is multilingual; an .en model would make
+# the product silently English-only. Overridable because a deployment with more CPU than
+# this one may prefer `small`.
+UPLOAD_MODEL = os.environ.get("UPLOAD_MODEL", "base")
 
 # --- Storage ---
 # The session ledger is SQLite. Cloud Run's filesystem is not durable, so guest sessions
@@ -66,9 +95,20 @@ RENDER_DIR = Path(os.environ.get("RENDER_DIR", APP_ROOT / "scratch" / "renders")
 # The demo corpus media. NOT under scratch/, because this is not generated output but
 # **content**: it has to be in the deployed image or a judge hears nothing. We do not
 # commit what the code generates, but we do commit what the product shows.
-#
-# Media a user uploads does NOT go here; that work moves to GCS.
 MEDIA_DIR = Path(os.environ.get("MEDIA_DIR", APP_ROOT / "demo" / "media"))
+
+# Uploaded media, kept apart from the demo corpus for two reasons. The image layer should
+# be treated as read-only on Cloud Run, so this points at /tmp there. And keeping visitor
+# files out of the committed corpus means a stray upload can never end up in the repository.
+#
+# Ephemeral, like sessions and render outputs: a restart clears it. The durable version of
+# this is object storage, which is the same piece of work as moving the demo corpus to GCS.
+UPLOAD_DIR = Path(os.environ.get("UPLOAD_DIR", APP_ROOT / "scratch" / "uploads"))
+
+# The marker a stored source_url carries so both the URL builder and the render path know
+# which directory to resolve it in. Written into the data rather than guessed from the
+# filename, because guessing from a filename is how traversal bugs start.
+UPLOAD_URL_PREFIX = "uploads/"
 
 # The demo corpus's ingest documents. The deployed instance fills ClickHouse from these,
 # so search works out of the box.
@@ -91,4 +131,14 @@ def costs() -> dict[str, int]:
         "preview_segment": COST_PREVIEW,
         "commit_render": COST_RENDER,
         "ingest_per_minute": COST_INGEST_PER_MINUTE,
+    }
+
+
+def limits() -> dict:
+    """Upload limits, so the interface can state them before a file is chosen."""
+    return {
+        "max_mb": MAX_UPLOAD_MB,
+        "max_seconds": MAX_UPLOAD_SECONDS,
+        "max_uploads": MAX_UPLOADS_PER_SESSION,
+        "suffixes": sorted(UPLOAD_SUFFIXES),
     }

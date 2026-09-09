@@ -28,7 +28,7 @@ This repository is mid-build. As of now, **working and tested**:
 - Sample-accurate cutting and splicing on word boundaries
 - Assembling a new sentence from single words taken across different recordings
 - HTTP API: anonymous sessions, credit ledger, the `Origin-Agent-Cluster` header,
-  ranked candidates, provenance fields — 116 API tests
+  ranked candidates, provenance fields — 138 API tests
 - Timeline interface: virtual-splice player (double buffered, rAF driven), a clickable
   provenance strip, and a panel that drives the same flow by hand without WebMCP
 - Five WebMCP tools: `find_line`, `propose_cut`, `preview_segment`,
@@ -42,7 +42,10 @@ This repository is mid-build. As of now, **working and tested**:
 - **Word-level picking**: click a word to hear exactly that word, shift-click a second to
   take the span. Verified end to end — a hand-picked 360ms range rendered to 360ms of
   audio, measured off the output file, where the phrase match had been 820ms
-- Interface rendered from state and checked headless — 146 UI tests, 122 web tests
+- **Bring your own footage from the browser**: drop in audio or video, any language, and it
+  is transcribed and searchable. Isolated per session, so one visitor's upload does not
+  appear in anyone else's library — asserted by a test that opens a second session
+- Interface rendered from state and checked headless — 183 UI tests, 122 web tests
 
 Written but **not verified**: the Gemini tone pass and an assistant turn (no live key
 here), and the tools appearing in a real agent client (nothing local exposes
@@ -129,20 +132,35 @@ docker run --rm -p 8090:8080 --network dev_default `
   -e CLICKHOUSE_PASSWORD=dev -e CLICKHOUSE_DATABASE=cinema cinema-app:dev
 ```
 
-337MB, single stage. No node stage, because there is no build step, and no
-`faster-whisper`, because transcription is offline. Verified end to end locally: page,
-search, media range requests and the FFmpeg render all work on the slim image.
+866MB, single stage. No node stage, because there is no build step.
+
+It was 337MB until uploads arrived. `faster-whisper` used to be out of the image on the
+grounds that transcription happens offline — a fair argument until a visitor wants to bring
+their own footage, at which point the library is a demo of itself. The 529MB is
+`ctranslate2`, PyAV, `onnxruntime`, `numpy` and the 141MB model baked in so a cold start
+does not fetch it from a third party. Dropping `requirements-ingest.txt` from the Dockerfile
+puts it back to 337MB and turns uploads off cleanly, which the interface already handles.
+
+Verified end to end in the container: page, search, media range requests, the FFmpeg render,
+and an upload transcribed and searched.
 
 Deploying to Cloud Run: `DEPLOY.md`.
 
 ## Tests
 
 ```powershell
-.venv\Scripts\python.exe -m pipeline.test_queries    #  12  SQL correctness
-.venv\Scripts\python.exe -m server.test_api          # 101  API, render, agent tools
+.venv\Scripts\python.exe -m pipeline.test_queries    #  20  SQL correctness
+.venv\Scripts\python.exe -m server.test_api          # 138  API, uploads, render, agent tools
 .venv\Scripts\python.exe -m doctest pipeline\schema.py
-node web\test_web.mjs                                #  89  store, WebMCP, injection, i18n
+node web\test_web.mjs                                # 122  store, WebMCP, injection, i18n
+node web\test_ui.mjs                                 # 183  the interface, rendered headless
 node web\test_approve.mjs                            #  35  approval dialog
+```
+
+Against a running instance, local or deployed:
+
+```powershell
+.venv\Scripts\python.exe -m dev.check_deploy http://127.0.0.1:8080   # 27 checks
 ```
 
 End-to-end ingest and cut verification: `pipeline/README.md`.
@@ -150,8 +168,9 @@ API surface and security posture: `server/README.md`.
 
 ## Where the footage comes from
 
-The user brings their own licensed library. Editing software is not answerable for what
-someone cuts with it, and a news editor cutting an archive clip is doing a legitimate
+The user brings their own licensed library — from the browser, with the upload control, or
+from the command line with `python -m dev.add_take`. Editing software is not answerable for
+what someone cuts with it, and a news editor cutting an archive clip is doing a legitimate
 job.
 
 This repository's demo corpus comes from clean sources. The tool does **not** download

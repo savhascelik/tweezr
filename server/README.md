@@ -64,6 +64,9 @@ allowance.
 | `POST /api/lines` | the words of given lines, with timings (clickable transcript) | 0 |
 | `GET /api/word/{word}` | every occurrence of a word (single-word assembly) | 0 |
 | `GET /api/library/stats` | what the library holds | 0 |
+| `GET /api/upload/status` | are uploads on, and the limits | 0 |
+| `POST /api/upload` | bring your own audio or video | 1 per started minute |
+| `GET /api/upload/{id}` | ingest progress, owner only | 0 |
 | `POST /api/render` | queue an approved cut | 1 |
 | `GET /api/render/{id}` | job status, owner only | 0 |
 | `GET /api/render/{id}/file` | download the output, owner only | 0 |
@@ -85,6 +88,54 @@ nothing, and a test asserts the balance does not move.
 Ranking is product logic and lives in `routes.py` rather than the SQL: the highest
 delivery confidence first. Given a tone filter, that reads directly as "the best example
 of that delivery first".
+
+## Uploads
+
+A library a visitor cannot add to is a demo of itself, so `POST /api/upload` takes audio or
+video in any language and puts it in. It mirrors render's shape — an in-memory job, a
+background thread, a status endpoint the client polls — because Whisper on CPU takes
+seconds to minutes and inventing a second job mechanism would only mean two things to
+reason about.
+
+**Uploads are isolated per session.** The take goes into a project derived from the session
+cookie, and search spans two projects: the shared demo corpus plus the caller's own. The
+upload project id is not something a caller can supply, which is what makes the isolation
+hold rather than depending on a validation rule. `dev/check_deploy` and the API tests both
+assert a second session does not see the first one's take.
+
+What is validated, in order, before anything is charged:
+
+- The container extension, before a byte is stored
+- The concurrency and per-session count, so a hundred megabytes are not streamed to disk
+  before finding out the answer is no
+- The size, **while streaming** rather than from `Content-Length`: a client can claim any
+  length, and by the time the lie is obvious the disk is full
+- The duration, measured from the real file with ffmpeg
+
+The stored filename is generated, never the one the browser sent — a browser will happily
+send a name with slashes in it. The take id is sanitised down to ASCII for the same reason:
+it ends up in URLs and in ClickHouse.
+
+Priced per **started** minute, so a twenty second clip costs one credit. And an ingest that
+fails after being charged is refunded, because a silent track or a container ffmpeg cannot
+read is nobody's fault. `sessions.refund` writes a positive ledger row rather than
+rewriting the balance, so the history still shows what happened.
+
+Uploaded media lives in `UPLOAD_DIR`, apart from the demo corpus, mounted at `/uploads`.
+Two directories because the image layer is read-only on Cloud Run and visitor files must
+not be able to reach the committed repository. **That mount is not access controlled**: an
+upload is reachable by anyone who knows the filename. The names carry eight random hex
+characters so they are not guessable, and search is isolated so nobody discovers them by
+looking, but signed URLs on object storage are the real fix and it is the same work as
+moving the demo corpus to GCS.
+
+### Transcription is optional, and says so
+
+faster-whisper lives in `requirements-ingest.txt`. The deployed image installs it — that is
+a reversal of the earlier decision, and it costs about 260 MB with the model baked in — but
+a server without it still runs the whole product. `GET /api/upload/status` reports
+`available: false` with a reason, and the interface disables the control and explains why
+rather than accepting a file and failing a minute later.
 
 ## Render
 
@@ -198,7 +249,7 @@ docker compose -f dev\docker-compose.yml up -d
 .venv\Scripts\python.exe -m server.test_api
 ```
 
-116 tests: security headers, session creation and reuse, cookie flags, the session id
+138 tests: security headers, session creation and reuse, cookie flags, the session id
 staying out of response bodies, input validation, media URL mapping, five hostile paths
 through `resolve_media`, search ranking and provenance fields, line words including
 duplicate pairs collapsing and an unknown line being absent rather than an error, a real
@@ -206,6 +257,12 @@ render whose output length matches the requested spans, cross-session isolation 
 status and download, 402 with no job when credits are short, atomicity of both the credit
 ledger and the assistant counter, what the assistant says with no key, and every path
 through the agent tools without an LLM.
+
+On uploads specifically: the limits being stated before a file is chosen, an unknown
+container refused, someone else's job reported as absent rather than forbidden, the
+per-started-minute pricing at four boundaries, a take id surviving `../../etc`, the stored
+filename being generated rather than the browser's, the upload project coming from the
+session id and not being in the queryable allowlist, and a refund landing as a ledger row.
 
 The atomicity tests fire two or three times the balance or limit concurrently and assert
 exactly the limit succeeds. Without that, two concurrent renders could spend the same

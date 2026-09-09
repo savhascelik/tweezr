@@ -1,28 +1,34 @@
-# Sunucu çalışma zamanı. Cloud Run imajının taşıdığı şey bu.
+# The server runtime: the minimum needed to serve the API, the page and the media.
 #
-# Transkripsiyon yığını (faster-whisper + ctranslate2, yüzlerce MB) burada YOK:
-# ingest offline çalışıyor, sunucu sadece hazır satırları sorguluyor.
-# İngest için: pip install -r requirements-ingest.txt
+# The transcription stack is NOT here, it is in requirements-ingest.txt. The split is not
+# about the deployed image any more — that one installs both, because a visitor uploading
+# their own footage is the point — it is about the runtime staying installable without
+# 260 MB of inference dependencies. With only this file the product runs in full and
+# /api/upload/status reports that uploads are off, which the interface states plainly
+# instead of failing when used.
 #
-# Doğrulanmış sürümler — Python 3.11.9, Windows, CPU.
+# Verified versions — Python 3.11.9, Windows, CPU.
 
 fastapi==0.141.1
 uvicorn[standard]==0.52.4
 
-# ClickHouse retrieval. Track şartı: gerçekten import edilip çağrılıyor,
-# bkz. pipeline/db.py ve pipeline/queries.py.
+# ClickHouse retrieval. A track requirement, and genuinely imported and called:
+# see pipeline/db.py and pipeline/queries.py.
 clickhouse-connect==1.8.0
 
-# Ton sınıflandırması (pipeline/tone.py).
+# Delivery classification (pipeline/tone.py).
 google-genai==2.22.0
 
-# Sayfa içi asistan. Araç şemasını fonksiyon imzası ve docstring'inden üretiyor,
-# bkz. server/agent_tools.py. Anahtar yoksa sohbet kapanıyor, ürün çalışmaya devam
-# ediyor — o yüzden bu bağımlılık zorunlu değil ama varsayılan olarak kurulu.
+# The in-page assistant. Builds its tool schema from function signatures and docstrings,
+# see server/agent_tools.py. With no key the chat switches off and the product keeps
+# working, so this dependency is not load-bearing — but it is installed by default.
 google-adk==2.8.0
 
-# Statik ffmpeg binary'si: render ve ses çıkarma için. Sistem kurulumu gerekmiyor.
+# Static ffmpeg binary: for render and for audio extraction. No system install needed.
 imageio-ffmpeg==0.5.1
 
-# TestClient bağımlılığı (server/test_api.py).
+# Multipart form parsing, which the upload endpoint needs. FastAPI does not pull it in.
+python-multipart==0.0.20
+
+# A TestClient dependency (server/test_api.py).
 httpx==0.28.1

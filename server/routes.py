@@ -11,7 +11,18 @@ delivery first".
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
+import re
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -19,6 +30,7 @@ from pipeline import queries, schema, search
 
 from . import agent, ch, config, sessions
 from . import render as render_worker
+from . import uploads as upload_worker
 
 router = APIRouter(prefix="/api")
 
@@ -30,12 +42,18 @@ drop_client = ch.drop
 def media_url(source_url: str) -> str:
     """Turns a recording reference into a playable URL.
 
-    Served locally from /media, and StaticFiles supports HTTP range, which the
+    Served locally from /media or /uploads, and StaticFiles supports HTTP range, which the
     virtual-splice player depends on. In production this becomes a GCS signed URL.
+
+    The `uploads/` marker is carried in the stored source_url rather than guessed from the
+    filename, so which directory a file lives in is data and not a heuristic.
     """
     if source_url.startswith(("http://", "https://", "/")):
         return source_url
-    return f"/media/{source_url.rsplit('/', 1)[-1]}"
+    name = source_url.rsplit("/", 1)[-1]
+    if source_url.startswith(config.UPLOAD_URL_PREFIX):
+        return f"/uploads/{name}"
+    return f"/media/{name}"
 
 
 def match_id(match: dict) -> str:
@@ -131,6 +149,17 @@ def validate_project(project: str) -> str:
     return project
 
 
+def resolve_projects(session: dict, project: str) -> list[str]:
+    """The library this caller can see: a shared project plus their own uploads.
+
+    The shared one is checked against the allowlist because it arrives in the request. The
+    upload one is derived from the session cookie and is therefore not the caller's to
+    choose — which is precisely what stops one visitor reading another's footage. There is
+    nothing to validate about a value the caller cannot supply.
+    """
+    return [validate_project(project), config.session_project(session["id"])]
+
+
 def validate_tone(tone: str) -> str:
     if tone and tone not in schema.TONES:
         raise HTTPException(
@@ -143,7 +172,7 @@ def validate_tone(tone: str) -> str:
 @router.post("/find_line")
 def find_line(body: FindLineRequest, request: Request, response: Response) -> dict:
     session = current_session(request, response)
-    project = validate_project(body.project)
+    projects = resolve_projects(session, body.project)
     tone = validate_tone(body.tone)
 
     words = schema.normalize_phrase(body.phrase)
@@ -157,7 +186,7 @@ def find_line(body: FindLineRequest, request: Request, response: Response) -> di
         )
 
     try:
-        matches = search.phrase_search(clickhouse(), project, body.phrase, tone)
+        matches = search.phrase_search(clickhouse(), projects, body.phrase, tone)
     except Exception as error:
         drop_client()
         raise HTTPException(status_code=503, detail=f"Search failed: {error}")
@@ -200,15 +229,15 @@ def read_lines(body: LinesRequest, request: Request, response: Response) -> dict
     Read-only and free, like every other search endpoint. Charging for reading the
     transcript you are already looking at would be absurd.
     """
-    current_session(request, response)
-    project = validate_project(body.project)
+    session = current_session(request, response)
+    projects = resolve_projects(session, body.project)
 
     # De-duplicated: several candidates can be hits inside the same line, and asking
     # ClickHouse for it more than once buys nothing.
     pairs = sorted({(ref.take_id, ref.line_id) for ref in body.lines})
 
     try:
-        lines = search.line_words(clickhouse(), project, pairs)
+        lines = search.line_words(clickhouse(), projects, pairs)
     except Exception as error:
         drop_client()
         raise HTTPException(status_code=503, detail=f"Query failed: {error}")
@@ -227,13 +256,117 @@ def read_lines(body: LinesRequest, request: Request, response: Response) -> dict
     }
 
 
+# --- Uploads ---
+
+
+@router.get("/upload/status")
+def upload_status(request: Request, response: Response) -> dict:
+    """Whether this deployment accepts uploads, and the limits if it does.
+
+    Asked before a file is chosen. Transcription needs faster-whisper, which is not in the
+    server runtime by default — ctranslate2 is hundreds of megabytes and nothing else in
+    the container uses it. Saying so up front beats accepting a file and failing a minute
+    later.
+    """
+    session = current_session(request, response)
+    available, reason = upload_worker.transcription_available()
+    return {
+        "available": available,
+        "reason": reason,
+        "reason_code": "" if available else "no_transcriber",
+        "limits": config.limits(),
+        "cost_per_minute": config.COST_INGEST_PER_MINUTE,
+        "tone": upload_worker.tone_available(),
+        "uploads": upload_worker.takes_in_project(config.session_project(session["id"])),
+    }
+
+
+@router.post("/upload")
+async def upload(
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    label: str = Form(""),
+    language: str = Form(""),
+) -> dict:
+    """Accepts a recording and starts the ingest.
+
+    The response returns as soon as the file is on disk and validated; transcription runs
+    in the background and the client polls /api/upload/{job_id}. Whisper on CPU takes
+    seconds to minutes, which is far too long to hold a request open.
+
+    Order: validate, charge, work. A rejected upload costs nothing, and an ingest that
+    fails after being charged is refunded — see uploads.run_blocking.
+    """
+    session = current_session(request, response)
+
+    available, reason = upload_worker.transcription_available()
+    if not available:
+        raise HTTPException(status_code=503, detail=reason)
+
+    if language and not re.fullmatch(r"[a-z]{2,3}", language):
+        raise HTTPException(status_code=422, detail=f"Not a language code: {language!r}")
+
+    try:
+        media, seconds, take_id = await upload_worker.receive(file, session["id"], label)
+    except upload_worker.UploadRejected as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Could not store the file: {error}")
+
+    try:
+        job = upload_worker.enqueue(
+            session["id"], take_id, file.filename or "", seconds
+        )
+    except upload_worker.UploadRejected as error:
+        media.unlink(missing_ok=True)
+        raise HTTPException(status_code=429, detail=str(error))
+
+    cost = upload_worker.credits_for(seconds)
+    try:
+        remaining = sessions.charge(
+            session["id"], cost, f"ingest {job.take_id} ({seconds:.0f}s)"
+        )
+    except sessions.InsufficientCredits as error:
+        media.unlink(missing_ok=True)
+        job.status = "failed"
+        job.error = "not enough credits"
+        raise HTTPException(
+            status_code=402,
+            detail=f"{error.needed} credits needed for {seconds:.0f} seconds, "
+            f"balance is {error.balance}.",
+        )
+
+    job.charged = cost
+    background.add_task(upload_worker.start, job, media, language)
+
+    session = sessions.get(session["id"]) or session
+    return {
+        **job.public(),
+        "credits_left": remaining,
+        "session": session_payload(session),
+    }
+
+
+@router.get("/upload/{job_id}")
+def upload_job(job_id: str, request: Request, response: Response) -> dict:
+    session = current_session(request, response)
+    job = upload_worker.get(job_id)
+    # Someone else's job is reported as absent rather than forbidden: 403 would confirm
+    # that the id exists.
+    if job is None or job.session_id != session["id"]:
+        raise HTTPException(status_code=404, detail="No such upload.")
+    return {**job.public(), "session": session_payload(sessions.get(session["id"]) or session)}
+
+
 @router.get("/library/stats")
 def library_stats(request: Request, response: Response, project: str = config.DEMO_PROJECT) -> dict:
-    current_session(request, response)
-    validate_project(project)
+    session = current_session(request, response)
+    projects = resolve_projects(session, project)
     try:
         result = clickhouse().query(
-            queries.LIBRARY_STATS, parameters={"project": project}
+            queries.LIBRARY_STATS, parameters={"projects": projects}
         )
     except Exception as error:
         drop_client()
@@ -245,7 +378,7 @@ def library_stats(request: Request, response: Response, project: str = config.DE
     # data: the interface used to carry an English sentence as a constant, which is a
     # misleading hint the moment the footage is in another language.
     try:
-        sample = clickhouse().query(queries.SAMPLE_LINE, parameters={"project": project})
+        sample = clickhouse().query(queries.SAMPLE_LINE, parameters={"projects": projects})
         stats["sample_line"] = sample.result_rows[0][0] if sample.result_rows else ""
     except Exception:
         # Cosmetic. An empty library or a failed query means no example, not no stats.
@@ -263,11 +396,11 @@ def word_occurrences(
     tone: str = "",
 ) -> dict:
     """Every occurrence of a single word. Behind the word-assembly interface."""
-    current_session(request, response)
-    validate_project(project)
+    session = current_session(request, response)
+    projects = resolve_projects(session, project)
     validate_tone(tone)
     try:
-        rows = search.word_search(clickhouse(), project, word, tone)
+        rows = search.word_search(clickhouse(), projects, word, tone)
     except Exception as error:
         drop_client()
         raise HTTPException(status_code=503, detail=f"Search failed: {error}")
@@ -317,7 +450,7 @@ async def render(
     background: BackgroundTasks,
 ) -> dict:
     session = current_session(request, response)
-    project = validate_project(body.project)
+    projects = resolve_projects(session, body.project)
 
     for segment in body.segments:
         if segment.end_ms <= segment.start_ms:
@@ -330,7 +463,7 @@ async def render(
     # rejected means making the user pay for their own mistake.
     try:
         job, steps, total = render_worker.enqueue(
-            session["id"], project, [segment.model_dump() for segment in body.segments]
+            session["id"], projects, [segment.model_dump() for segment in body.segments]
         )
     except render_worker.RenderRejected as error:
         raise HTTPException(status_code=422, detail=str(error))

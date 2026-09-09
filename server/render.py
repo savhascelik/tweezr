@@ -21,6 +21,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pipeline import search
+
 from . import ch, config
 
 # The longest output allowed. Stops a single request burning hours of CPU.
@@ -87,16 +89,28 @@ class RenderRejected(Exception):
 
 
 def resolve_media(source_url: str) -> Path:
-    """source_url -> the real file under MEDIA_DIR.
+    """source_url -> the real file, under the demo corpus or the upload directory.
 
     Only the basename is taken, and then the resolved path is checked to still be inside
-    MEDIA_DIR. Together those two close path traversal.
+    the directory it was resolved against. Together those two close path traversal.
+
+    Which of the two directories is chosen comes from the `uploads/` marker stored in the
+    data, not from anything about the filename. That matters: a marker is something the
+    ingest wrote, whereas a filename is something a browser sent, and deciding a directory
+    from the second is how traversal bugs start. Either way only the basename survives, so
+    a forged marker still cannot escape.
     """
-    name = Path(source_url.replace("\\", "/")).name
+    normalised = source_url.replace("\\", "/")
+    name = Path(normalised).name
     if not name or name in (".", ".."):
         raise RenderRejected(f"Unusable source name: {source_url!r}")
 
-    root = config.MEDIA_DIR.resolve()
+    root = (
+        config.UPLOAD_DIR
+        if normalised.startswith(config.UPLOAD_URL_PREFIX)
+        else config.MEDIA_DIR
+    ).resolve()
+
     candidate = (root / name).resolve()
     if not candidate.is_relative_to(root):
         raise RenderRejected(f"Media path is outside the allowed directory: {name!r}")
@@ -105,16 +119,21 @@ def resolve_media(source_url: str) -> Path:
     return candidate
 
 
-def take_bounds(project: str, take_ids: list[str]) -> dict[str, dict]:
-    """Source file and known duration per take. This is what validation rests on."""
+def take_bounds(project: str | list[str], take_ids: list[str]) -> dict[str, dict]:
+    """Source file and known duration per take. This is what validation rests on.
+
+    Spans a list of projects for the same reason search does: a cut can mix the demo
+    corpus with footage this visitor uploaded, and both have to resolve here or the
+    render would reject the visitor's own take.
+    """
     result = ch.client().query(
         """
         SELECT take_id, any(source_url) AS source_url, max(end_ms) AS last_ms
         FROM words
-        WHERE project_id = {project:String} AND take_id IN {takes:Array(String)}
+        WHERE project_id IN {projects:Array(String)} AND take_id IN {takes:Array(String)}
         GROUP BY take_id
         """,
-        parameters={"project": project, "takes": take_ids},
+        parameters={"projects": search.as_projects(project), "takes": take_ids},
     )
     return {
         row[0]: {"source_url": row[1], "last_ms": int(row[2])}

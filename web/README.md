@@ -54,8 +54,8 @@ The blueprint said React; this is a deliberate departure.
 | `styles.css` | Sunlit Studio tokens and the whole stylesheet. |
 | `fonts/` | Plus Jakarta Sans, two subsets, served from this origin. |
 | `src/i18n.js` | Interface strings. English default and fallback, Turkish available. |
+| `src/api.js` | Server calls, including the upload with its progress events. |
 | `src/store.js` | Single source of truth. Tools and panel change the same store. |
-| `src/api.js` | Server calls. The session cookie is HttpOnly; fetch sends it. |
 | `src/player.js` | Virtual-splice player. Double buffered, rAF driven. |
 | `src/ui.js` | Rendering. `el()` only accepts `textContent`, `icon()` builds SVG. |
 | `src/webmcp.js` | The five WebMCP tools: registration, state reflection, fallback. |
@@ -71,6 +71,23 @@ The blueprint said React; this is a deliberate departure.
 tone values the corpus actually carries, so picking one narrows a real query; picking it
 again clears it. It re-runs the search immediately, because a filter that needs a second
 click reads as broken.
+
+**Your own footage.** A drop zone that is also a file picker, with the take name and the
+spoken language beside it. The zone is a `<label>` wrapping a hidden `<input type=file>`, so
+keyboard activation and the file dialog come free rather than being reimplemented.
+
+Two phases are reported separately because they fail differently and take different amounts
+of time: the transfer is network-bound and shows a percentage, the ingest is CPU-bound on
+the server and shows a stage. Once the bytes are across, the bar stops claiming to know a
+fraction and pulses instead — transcription has no measurable progress, and a fake
+percentage is worse than none. Transcription is also the slow stage, so it says so; a silent
+minute reads as a hang.
+
+The upload goes through `XMLHttpRequest` rather than `fetch`, for one reason: `fetch` has no
+upload progress event.
+
+When the server has no transcriber the control is disabled and says why, rather than
+accepting a file and failing a minute later.
 
 **Transcript and word picker.** One card per matching take: speaker, take id, delivery with
 its confidence, the matched range, and the **whole line as clickable words**.
@@ -300,7 +317,7 @@ recordings, clicking the one picked word clears it so there is always a way out,
 past the end is refused rather than producing a broken range, and a picked range carries the
 candidate's provenance since the word rows do not have any.
 
-`test_ui.mjs`, 146 tests: `createUI` and `render()` driven against a fake DOM across empty,
+`test_ui.mjs`, 183 tests: `createUI` and `render()` driven against a fake DOM across empty,
 candidates, cut, playing, rendered, failed, assistant-off and Turkish states. Serving the
 file says nothing about whether it renders, and this interface is built entirely in JS, so
 a typo in a node name would otherwise surface in a demo rather than a test run. It also

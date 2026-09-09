@@ -20,9 +20,6 @@ scratch/
 dev/docker-compose.yml
 dev/clickhouse-listen.xml
 
-# The transcription stack does not run on the server
-requirements-ingest.txt
-
 # Tests are not needed in the image
 **/test_*.py
 **/test_*.mjs

@@ -44,6 +44,7 @@ const ICONS = {
   plus: "M12 5v14M5 12h14",
   grip: "M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01",
   close: "M6 6l12 12M18 6L6 18",
+  upload: "M12 16V4M7.5 8.5L12 4l4.5 4.5M4 16v3h16v-3",
   wave: "M3 12h2l2-6 2 12 2-16 2 20 2-14 2 8 2-4h2",
   swap: "M4 8h13l-3-3M20 16H7l3 3",
   send: "M4 12l16-8-6 8 6 8z",
@@ -398,6 +399,99 @@ export function createUI(root, handlers) {
     chatForm,
   ]);
 
+  /* ================= Bring your own footage ================= */
+  // The library was a fixed corpus, which made the product a demo of itself. This is the
+  // control that turns it into something a visitor can try on their own material.
+
+  nodes.uploadInput = el("input", {
+    type: "file",
+    id: "upload",
+    class: "visually-hidden",
+    accept: "audio/*,video/*",
+    onChange: (event) => {
+      const [file] = event.target.files ?? [];
+      if (file) submitUpload(file);
+      // Cleared so choosing the same file twice still fires a change event
+      event.target.value = "";
+    },
+  });
+
+  nodes.uploadLabel = el("input", {
+    type: "text",
+    class: "drop-field",
+    autocomplete: "off",
+    maxlength: "32",
+  });
+  label(nodes.uploadLabel, "upload.labelPlaceholder", "placeholder");
+  label(nodes.uploadLabel, "upload.labelField", "ariaLabel");
+
+  nodes.uploadLanguage = el("select", { class: "drop-field drop-language" });
+  label(nodes.uploadLanguage, "upload.languageField", "ariaLabel");
+  nodes.uploadLanguage.appendChild(label(el("option", { value: "" }), "upload.detect"));
+  // A short list rather than every ISO code: naming the language beats detection, and a
+  // hundred-item select is a worse affordance than a sensible few plus detection.
+  for (const code of ["en", "tr", "de", "fr", "es", "it", "ru", "ar"]) {
+    nodes.uploadLanguage.appendChild(el("option", { value: code, text: code }));
+  }
+
+  nodes.uploadNote = el("span", { class: "drop-note" });
+  nodes.uploadBar = el("div", { class: "drop-bar-fill" });
+  nodes.uploadBarWrap = el("div", { class: "drop-bar" }, [nodes.uploadBar]);
+  nodes.uploadState = el("p", { class: "drop-state" });
+
+  function submitUpload(file) {
+    handlers.onUpload(file, {
+      label: nodes.uploadLabel.value,
+      language: nodes.uploadLanguage.value,
+    });
+    nodes.uploadLabel.value = "";
+  }
+
+  // The zone is a label wrapping a hidden input: that gets keyboard activation and the
+  // file dialog for free, without re-implementing either.
+  nodes.dropZone = el(
+    "label",
+    {
+      class: "drop",
+      for: "upload",
+      onDragOver: (event) => {
+        event.preventDefault();
+        nodes.dropZone.classList.add("is-over");
+      },
+      onDragLeave: () => nodes.dropZone.classList.remove("is-over"),
+      onDrop: (event) => {
+        event.preventDefault();
+        nodes.dropZone.classList.remove("is-over");
+        const [file] = event.dataTransfer?.files ?? [];
+        if (file) submitUpload(file);
+      },
+    },
+    [
+      el("span", { class: "drop-mark" }, [icon("upload")]),
+      el("span", { class: "drop-text" }, [
+        label(el("strong", { class: "drop-title" }), "upload.title"),
+        nodes.uploadNote,
+      ]),
+    ]
+  );
+
+  nodes.uploadCard = el("section", { class: "card" }, [
+    el("div", { class: "card-head" }, [
+      el("div", { class: "card-lead" }, [
+        el("div", { class: "card-icon card-icon-sage" }, [icon("film")]),
+        el("div", {}, [
+          label(el("h2", { class: "card-title" }), "upload.heading"),
+          label(el("p", { class: "card-sub" }), "upload.sub"),
+        ]),
+      ]),
+    ]),
+    nodes.dropZone,
+    nodes.uploadInput,
+    el("div", { class: "drop-fields" }, [nodes.uploadLabel, nodes.uploadLanguage]),
+    nodes.uploadBarWrap,
+    nodes.uploadState,
+  ]);
+
   /* ================= Stage ================= */
 
   // The player mounts into this layer; the overlays are siblings after it so they paint
@@ -563,7 +657,7 @@ export function createUI(root, handlers) {
       hero,
       el("div", { class: "grid" }, [
         el("div", { class: "col" }, [transcriptCard, nodes.chatCard]),
-        el("div", { class: "col" }, [stageCard, nodes.altCard]),
+        el("div", { class: "col" }, [stageCard, nodes.altCard, nodes.uploadCard]),
       ]),
       trackCard,
     ]),
@@ -1093,6 +1187,60 @@ export function createUI(root, handlers) {
     nodes.altButton.onclick = () => handlers.onSwap(replaceIndex, alternative);
   }
 
+  function renderUpload(state) {
+    const upload = state.upload ?? {};
+    const busy = upload.status === "sending" || upload.status === "queued" || upload.status === "running";
+
+    // A control that cannot work should say why rather than wait to fail on use.
+    nodes.dropZone.classList.toggle("is-off", !upload.available);
+    nodes.uploadInput.disabled = !upload.available || busy;
+    nodes.uploadLabel.disabled = !upload.available || busy;
+    nodes.uploadLanguage.disabled = !upload.available || busy;
+
+    if (!upload.available) {
+      nodes.uploadNote.textContent = upload.reason || t("upload.offFallback");
+    } else if (upload.limits) {
+      nodes.uploadNote.textContent = t("upload.limits", {
+        mb: upload.limits.max_mb,
+        seconds: upload.limits.max_seconds,
+        cost: upload.costPerMinute,
+      });
+    } else {
+      nodes.uploadNote.textContent = "";
+    }
+
+    // The bar tracks the network transfer only. Once the bytes are there the server is
+    // transcribing, which has no measurable fraction, so the bar sits full and the text
+    // carries the stage instead of a progress number nobody can trust.
+    const showBar = busy || upload.status === "failed";
+    nodes.uploadBarWrap.hidden = !showBar;
+    nodes.uploadBar.style.width = `${Math.round((upload.progress ?? 0) * 100)}%`;
+    nodes.uploadBarWrap.classList.toggle("is-working", upload.status === "running" || upload.status === "queued");
+    nodes.uploadBarWrap.classList.toggle("is-failed", upload.status === "failed");
+
+    if (upload.status === "sending") {
+      nodes.uploadState.textContent = t("upload.sending", {
+        name: upload.filename,
+        percent: Math.round((upload.progress ?? 0) * 100),
+      });
+    } else if (busy) {
+      nodes.uploadState.textContent = t(`upload.stage.${upload.stage || "queued"}`);
+    } else if (upload.status === "failed") {
+      nodes.uploadState.textContent = upload.error || t("upload.failed");
+    } else if (upload.status === "done" && upload.result) {
+      nodes.uploadState.textContent = t("upload.done", {
+        take: upload.result.take_id,
+        lines: upload.result.lines,
+        language: upload.result.language,
+        seconds: upload.result.elapsed,
+      });
+    } else {
+      nodes.uploadState.textContent = "";
+    }
+
+    nodes.uploadState.className = `drop-state${upload.status === "failed" ? " status-error" : ""}`;
+  }
+
   function renderJob(state) {
     const job = state.render ?? { status: "idle" };
     nodes.renderResult.replaceChildren();
@@ -1169,6 +1317,7 @@ export function createUI(root, handlers) {
     renderStage(state);
     renderAlt(state);
     renderTrack(state);
+    renderUpload(state);
     renderJob(state);
   }
 

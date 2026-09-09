@@ -76,6 +76,26 @@ const CATALOGUE = {
     "assistant.reason.no_api_key":
       "No GEMINI_API_KEY on the server. Search, the story track, preview and provenance all work without the assistant.",
 
+    "upload.heading": "Your own footage",
+    "upload.sub": "Audio or video, any language. It joins your library only.",
+    "upload.title": "Drop a file here, or click to choose",
+    "upload.limits": "Up to {mb} MB and {seconds} seconds. {cost} credit per started minute.",
+    "upload.labelField": "Take name",
+    "upload.labelPlaceholder": "take name (optional)",
+    "upload.languageField": "Spoken language",
+    "upload.detect": "detect language",
+    "upload.offFallback": "Uploads are off on this server.",
+    "upload.reason.no_transcriber":
+      "This server has no transcriber installed, so uploads are off. The demo library still works in full.",
+    "upload.sending": "Sending {name} — {percent}%",
+    "upload.stage.queued": "Queued…",
+    "upload.stage.saved": "Saved. Starting…",
+    "upload.stage.transcribing": "Transcribing. This is the slow part.",
+    "upload.stage.labelling": "Labelling the delivery…",
+    "upload.stage.writing": "Writing to the library…",
+    "upload.done": "{take} is in: {lines} lines, {language}, {seconds}s.",
+    "upload.failed": "The upload failed.",
+
     "stage.audioOnly": "audio only",
     "stage.idle": "nothing loaded",
 
@@ -124,6 +144,9 @@ const CATALOGUE = {
     "status.found": "{count} matches. Searching costs no credits.",
     "status.notFound": "\u201c{phrase}\u201d is not in the library.",
     "status.added": "{take} added. {count} segments.",
+    "status.uploading": "Sending {name}…",
+    "status.ingesting": "{seconds}s of media. Transcribing on the server; this takes a moment.",
+    "status.ingested": "{take} is in the library: {lines} lines, {language}. Search it now.",
     "status.picked": "{words} words: \u201c{text}\u201d, {duration}. Playing that range only.",
     "status.tweezed": "\u201c{text}\u201d tweezed out of {take}. {count} segments, nothing rendered.",
     "status.proposed": "A {count}-segment proposal is ready. Nothing was rendered.",
@@ -218,6 +241,26 @@ const CATALOGUE = {
     "assistant.reason.no_api_key":
       "Sunucuda GEMINI_API_KEY tanımlı değil. Arama, hikâye şeridi, önizleme ve provenance asistan olmadan çalışıyor.",
 
+    "upload.heading": "Kendi çekimin",
+    "upload.sub": "Ses ya da video, her dilde. Sadece senin kütüphanene giriyor.",
+    "upload.title": "Dosyayı buraya bırak, ya da seçmek için tıkla",
+    "upload.limits": "En fazla {mb} MB ve {seconds} saniye. Başlayan her dakika {cost} kredi.",
+    "upload.labelField": "Take adı",
+    "upload.labelPlaceholder": "take adı (isteğe bağlı)",
+    "upload.languageField": "Konuşulan dil",
+    "upload.detect": "dili tespit et",
+    "upload.offFallback": "Bu sunucuda yükleme kapalı.",
+    "upload.reason.no_transcriber":
+      "Bu sunucuda transkripsiyon kurulu değil, yükleme kapalı. Demo kütüphanesi tam çalışıyor.",
+    "upload.sending": "{name} gönderiliyor — %{percent}",
+    "upload.stage.queued": "Sırada…",
+    "upload.stage.saved": "Kaydedildi. Başlıyor…",
+    "upload.stage.transcribing": "Transkript çıkarılıyor. Yavaş kısım bu.",
+    "upload.stage.labelling": "Sunum etiketleniyor…",
+    "upload.stage.writing": "Kütüphaneye yazılıyor…",
+    "upload.done": "{take} girdi: {lines} satır, {language}, {seconds}sn.",
+    "upload.failed": "Yükleme başarısız.",
+
     "stage.audioOnly": "yalnızca ses",
     "stage.idle": "yüklü değil",
 
@@ -266,6 +309,9 @@ const CATALOGUE = {
     "status.found": "{count} eşleşme. Arama kredi harcamıyor.",
     "status.notFound": "\u201c{phrase}\u201d kütüphanede bulunamadı.",
     "status.added": "{take} eklendi. {count} parça.",
+    "status.uploading": "{name} gönderiliyor…",
+    "status.ingesting": "{seconds}sn medya. Sunucuda transkript çıkarılıyor, biraz sürer.",
+    "status.ingested": "{take} kütüphaneye girdi: {lines} satır, {language}. Şimdi ara.",
     "status.picked": "{words} kelime: \u201c{text}\u201d, {duration}. Sadece o aralık çalıyor.",
     "status.tweezed": "\u201c{text}\u201d {take} içinden cımbızlandı. {count} parça, render edilmedi.",
     "status.proposed": "{count} parçalık öneri hazır. Render edilmedi.",

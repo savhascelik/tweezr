@@ -66,6 +66,22 @@ def create_app() -> FastAPI:
         name="media",
     )
 
+    # Uploaded media, mounted separately from the demo corpus. Two directories rather than
+    # one because the image layer is read-only on Cloud Run and visitor files must not be
+    # able to land in the committed corpus.
+    #
+    # NOT access controlled, and that is a real property worth stating: a visitor's upload
+    # is reachable by anyone who knows the filename. The names carry eight random hex
+    # characters so they are not guessable, and SEARCH is isolated per session so nobody
+    # discovers them by looking. Proper object storage with signed URLs is the fix, and it
+    # is the same piece of work as moving the demo corpus to GCS.
+    config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/uploads",
+        StaticFiles(directory=config.UPLOAD_DIR),
+        name="uploads",
+    )
+
     # The frontend. If it is absent we do not mount, so the API still works alone.
     if config.STATIC_DIR.is_dir():
         app.mount(

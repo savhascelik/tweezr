@@ -182,7 +182,7 @@ def get_library_stats() -> dict:
     _record("get_library_stats", {})
     try:
         result = ch.client().query(
-            queries.LIBRARY_STATS, parameters={"project": config.DEMO_PROJECT}
+            queries.LIBRARY_STATS, parameters={"projects": [config.DEMO_PROJECT]}
         )
     except Exception as error:
         ch.drop()

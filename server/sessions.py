@@ -196,6 +196,41 @@ def charge(session_id: str, amount: int, reason: str) -> int:
     return remaining
 
 
+def refund(session_id: str, amount: int, reason: str = "refund") -> int:
+    """Gives credit back for work that was charged but never delivered.
+
+    The counterpart to charge(), and it exists because an ingest can fail for reasons that
+    are nobody's fault — a silent track, a container ffmpeg cannot read, the wrong
+    language. Charging for that is indefensible, and the alternative of charging only on
+    success would mean doing the work before knowing whether it can be paid for.
+
+    A positive ledger row rather than a rewritten balance, so the history still shows what
+    happened.
+    """
+    if amount <= 0:
+        session = get(session_id)
+        return int(session["credits"]) if session else 0
+
+    with connection(write=True) as conn:
+        row = conn.execute(
+            "SELECT credits FROM sessions WHERE id = ?", (session_id,)
+        ).fetchone()
+        if row is None:
+            return 0
+
+        restored = int(row["credits"]) + amount
+        conn.execute(
+            "UPDATE sessions SET credits = ?, last_seen = ? WHERE id = ?",
+            (restored, now(), session_id),
+        )
+        conn.execute(
+            "INSERT INTO ledger (session_id, delta, reason, at) VALUES (?, ?, ?, ?)",
+            (session_id, amount, reason, now()),
+        )
+
+    return restored
+
+
 class ChatLimitReached(Exception):
     def __init__(self, limit: int):
         self.limit = limit

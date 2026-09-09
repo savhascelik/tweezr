@@ -20,19 +20,35 @@ from pathlib import Path
 from . import db, queries, schema
 
 
-def phrase_search(client, project: str, phrase: str, tone: str = "") -> list[dict]:
+def as_projects(project: str | list[str] | tuple[str, ...]) -> list[str]:
+    """One project or several, normalised to the list the SQL expects.
+
+    Accepting a plain string keeps every existing caller — the CLI, the agent tools —
+    working unchanged, while the server can pass "the demo corpus plus this visitor's own
+    uploads" without a second code path.
+    """
+    if isinstance(project, str):
+        return [project]
+    return [str(item) for item in project if item]
+
+
+def phrase_search(
+    client, project: str | list[str], phrase: str, tone: str = ""
+) -> list[dict]:
     words = schema.normalize_phrase(phrase)
     if not words:
         return []
     result = client.query(
         queries.PHRASE_MATCHES,
-        parameters={"project": project, "phrase": words, "tone": tone},
+        parameters={"projects": as_projects(project), "phrase": words, "tone": tone},
     )
     rows = [dict(zip(result.column_names, row)) for row in result.result_rows]
     return queries.expand_phrase_rows(rows)
 
 
-def line_words(client, project: str, pairs: list[tuple[str, int]]) -> dict[str, list[dict]]:
+def line_words(
+    client, project: str | list[str], pairs: list[tuple[str, int]]
+) -> dict[str, list[dict]]:
     """Every word of the given lines, keyed by `take_id:line_id`.
 
     Phrase search returns the matched range only. This returns the sentence around it, so
@@ -47,7 +63,10 @@ def line_words(client, project: str, pairs: list[tuple[str, int]]) -> dict[str, 
 
     result = client.query(
         queries.LINE_WORDS,
-        parameters={"project": project, "pairs": [(str(t), int(l)) for t, l in pairs]},
+        parameters={
+            "projects": as_projects(project),
+            "pairs": [(str(t), int(l)) for t, l in pairs],
+        },
     )
 
     lines: dict[str, list[dict]] = {}
@@ -67,13 +86,13 @@ def line_words(client, project: str, pairs: list[tuple[str, int]]) -> dict[str, 
 
 
 def word_search(
-    client, project: str, word: str, tone: str = "", limit: int = 50
+    client, project: str | list[str], word: str, tone: str = "", limit: int = 50
 ) -> list[dict]:
     normalized = schema.normalize_word(word)
     result = client.query(
         queries.WORD_OCCURRENCES,
         parameters={
-            "project": project,
+            "projects": as_projects(project),
             "word": normalized,
             "tone": tone,
             "limit": limit,
@@ -132,7 +151,9 @@ def main() -> int:
     client = db.connect()
 
     if args.stats:
-        result = client.query(queries.LIBRARY_STATS, parameters={"project": args.project})
+        result = client.query(
+            queries.LIBRARY_STATS, parameters={"projects": [args.project]}
+        )
         print(f"\nLibrary ({args.project}):")
         for name, value in zip(result.column_names, result.result_rows[0]):
             print(f"  {name:22} {value}")

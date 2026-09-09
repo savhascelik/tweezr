@@ -30,6 +30,21 @@ const state = {
   chat: { available: false, reason: "", messagesLeft: 0, busy: false, messages: [] },
   // The render job. status: idle | queued | running | done | failed
   render: { status: "idle", jobId: null, downloadUrl: null, mode: null },
+  // Bringing your own footage. `available` is false when the deployment has no
+  // transcriber, and saying so is better than a control that fails on use.
+  upload: {
+    available: false,
+    reason: "",
+    limits: null,
+    costPerMinute: 1,
+    count: 0,
+    status: "idle",     // idle | sending | queued | running | done | failed
+    stage: "",
+    progress: 0,
+    filename: "",
+    error: "",
+    result: null,
+  },
 };
 
 const listeners = new Set();
@@ -126,6 +141,12 @@ export function setPlayback(playback) {
 export function setChat(chat) {
   state.chat = { ...state.chat, ...chat };
   notify();
+}
+
+export function setUpload(upload) {
+  state.upload = { ...state.upload, ...upload };
+  notify();
+  return state.upload;
 }
 
 // --- Word-level selection ---

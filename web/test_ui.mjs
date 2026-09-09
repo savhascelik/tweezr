@@ -250,6 +250,19 @@ function baseState(overrides = {}) {
     webmcp: { available: false, registered: 0 },
     chat: { available: false, reason: "", messagesLeft: 0, busy: false, messages: [] },
     render: { status: "idle", jobId: null, downloadUrl: null, mode: null },
+    upload: {
+      available: true,
+      reason: "",
+      limits: { max_mb: 100, max_seconds: 180, max_uploads: 8, suffixes: [".mp4", ".wav"] },
+      costPerMinute: 1,
+      count: 0,
+      status: "idle",
+      stage: "",
+      progress: 0,
+      filename: "",
+      error: "",
+      result: null,
+    },
     ...overrides,
   };
 }
@@ -274,6 +287,7 @@ function mount() {
     onJump: record("jump"),
     onRender: record("render"),
     onChat: record("chat"),
+    onUpload: record("upload"),
   });
   return { root, ui, calls };
 }
@@ -846,6 +860,122 @@ console.log("\n=== assistant ===");
   firstByClass(live.root, "chat-input").value = "   ";
   findAll(live.root, (node) => node.classes.has("chat-form"))[0].fire("submit");
   check("an empty message is not sent", live.calls.length, before);
+}
+
+console.log("\n=== bringing your own footage ===");
+{
+  const { root, ui, calls } = mount();
+  ui.render(baseState());
+
+  const zone = firstByClass(root, "drop");
+  checkThat("the drop zone is there", Boolean(zone));
+  // A label wrapping a hidden file input: keyboard activation and the file dialog come
+  // free instead of being reimplemented
+  check("it is a label pointing at the input", [zone.tag, zone.attributes.for], ["label", "upload"]);
+  const input = findAll(root, (node) => node.tag === "input" && node.attributes.type === "file")[0];
+  checkThat("the input is hidden but present", input.classes.has("visually-hidden"));
+  check("it accepts audio and video", input.attributes.accept, "audio/*,video/*");
+
+  // The limits are stated before a file is chosen, not after it is rejected
+  const note = firstByClass(root, "drop-note").textContent;
+  checkThat("the size limit is stated", note.includes("100 MB"), note);
+  checkThat("the duration limit is stated", note.includes("180 seconds"), note);
+  checkThat("and the price", note.includes("1 credit"), note);
+
+  // Dropping a file reaches the handler with the label and language beside it
+  firstByClass(root, "drop-field").value = "  Rooftop  ";
+  const language = findAll(root, (node) => node.classes.has("drop-language"))[0];
+  language.value = "tr";
+  zone.fire("drop", { dataTransfer: { files: [{ name: "kayit.mp4" }] } });
+  check("dropping reached the handler", calls.at(-1).name, "upload");
+  check("with the file", calls.at(-1).args[0].name, "kayit.mp4");
+  check("the take name", calls.at(-1).args[1].label, "  Rooftop  ");
+  check("and the language", calls.at(-1).args[1].language, "tr");
+  check("the name field is cleared after sending", firstByClass(root, "drop-field").value, "");
+
+  // Dragging over marks the zone, leaving unmarks it
+  zone.fire("dragover", {});
+  checkThat("dragging over marks the zone", zone.classes.has("is-over"));
+  zone.fire("dragleave", {});
+  checkThat("leaving unmarks it", !zone.classes.has("is-over"));
+
+  // An empty drop must not start anything
+  const before = calls.length;
+  zone.fire("drop", { dataTransfer: { files: [] } });
+  check("an empty drop does nothing", calls.length, before);
+}
+
+console.log("\n=== upload progress and stages ===");
+{
+  const { root, ui } = mount();
+  const stateOf = (upload) => baseState({ upload: { ...baseState().upload, ...upload } });
+
+  ui.render(stateOf({ status: "sending", progress: 0.42, filename: "kayit.mp4" }));
+  let text = firstByClass(root, "drop-state").textContent;
+  checkThat("the transfer reports a percentage", text.includes("42%"), text);
+  checkThat("and the filename", text.includes("kayit.mp4"), text);
+  check("the bar follows the transfer", firstByClass(root, "drop-bar-fill").style.width, "42%");
+
+  // Every server stage has a message. Transcription is the slow one and says so, because
+  // a silent minute reads as a hang.
+  for (const [stage, needle] of [
+    ["saved", "Starting"],
+    ["transcribing", "slow part"],
+    ["labelling", "delivery"],
+    ["writing", "library"],
+  ]) {
+    ui.render(stateOf({ status: "running", stage, progress: 1 }));
+    const shown = firstByClass(root, "drop-state").textContent;
+    checkThat(`the ${stage} stage is named`, shown.includes(needle), shown);
+  }
+
+  // The bar stops claiming to know a fraction once the bytes are across
+  ui.render(stateOf({ status: "running", stage: "transcribing", progress: 1 }));
+  checkThat("the bar pulses instead of guessing", firstByClass(root, "drop-bar").classes.has("is-working"));
+  checkThat("controls are locked while it works", firstByClass(root, "drop-field").disabled);
+
+  ui.render(
+    stateOf({
+      status: "done",
+      progress: 1,
+      result: { take_id: "UP01", lines: 4, language: "tr", elapsed: 12.5 },
+    })
+  );
+  text = firstByClass(root, "drop-state").textContent;
+  checkThat("success names the take", text.includes("UP01"), text);
+  checkThat("the line count", text.includes("4 lines"), text);
+  checkThat("and the language it heard", text.includes("tr"), text);
+  checkThat("the bar is put away", firstByClass(root, "drop-bar").hidden);
+
+  ui.render(stateOf({ status: "failed", error: "Larger than the 100 MB limit." }));
+  const failed = firstByClass(root, "drop-state");
+  check("a failure shows the server's reason", failed.textContent, "Larger than the 100 MB limit.");
+  checkThat("marked as an error", failed.classes.has("status-error"));
+  checkThat("and the bar says so too", firstByClass(root, "drop-bar").classes.has("is-failed"));
+}
+
+console.log("\n=== uploads off on this deployment ===");
+{
+  // Transcription needs faster-whisper, which is not in the server runtime by default. A
+  // control that cannot work should say why rather than fail when used.
+  const { root, ui } = mount();
+  ui.render(
+    baseState({
+      upload: {
+        ...baseState().upload,
+        available: false,
+        reason: "This server has no transcriber installed, so uploads are off.",
+      },
+    })
+  );
+  const zone = firstByClass(root, "drop");
+  checkThat("the zone is marked off", zone.classes.has("is-off"));
+  checkThat("the input is disabled", findAll(root, (n) => n.attributes.type === "file")[0].disabled);
+  checkThat(
+    "and the reason is on screen",
+    firstByClass(root, "drop-note").textContent.includes("no transcriber"),
+    firstByClass(root, "drop-note").textContent
+  );
 }
 
 console.log("\n=== render job ===");

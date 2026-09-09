@@ -1,16 +1,23 @@
-# Ingest yığını. Sadece korpusu hazırlarken gerekiyor, sunucuda değil.
+# The transcription stack. Needed to build a corpus, and to accept uploads.
 #
 #   pip install -r requirements.txt -r requirements-ingest.txt
 #
-# Ayrı tutmanın sebebi: faster-whisper + ctranslate2 yüzlerce MB ve Cloud Run
-# imajında hiç çalışmıyor. Transkripsiyon offline yapılıyor, sonuç ClickHouse'a
-# yazılıyor, sunucu sadece sorguluyor.
+# Kept in its own file rather than merged, for two reasons that still hold now that the
+# deployed image installs both. It is about 260 MB with the model, which is worth being an
+# explicit choice rather than a surprise. And the server degrades honestly without it:
+# /api/upload/status reports uploads as off and the interface says so, so a minimal
+# deployment is a real option and not a broken one.
+#
+# What it is NOT about any more: keeping it out of the container. Uploads were the reason
+# that argument stopped making sense — a library a visitor cannot add to is a demo of
+# itself.
 
 -r requirements.txt
 
-# Kelime bazlı zaman kodu. CPU'da çalışıyor, GPU gerekmiyor.
+# Word-level timecodes. Runs on CPU; no GPU needed. The multilingual models come from the
+# same package, which is why the product is not English-only.
 faster-whisper==1.1.1
 
-# faster-whisper 1.1.1 `requests`'i import ediyor ama bu ortamda geçişli olarak
-# gelmedi. Açıkça pinliyoruz, yoksa ilk çalıştırmada ModuleNotFoundError alıyorsun.
+# faster-whisper 1.1.1 imports `requests` but did not pull it in transitively in this
+# environment. Pinned explicitly, otherwise the first run is a ModuleNotFoundError.
 requests==2.34.2

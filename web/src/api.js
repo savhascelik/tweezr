@@ -79,6 +79,71 @@ export function sendChat(message) {
   });
 }
 
+export function uploadStatus() {
+  return request("/api/upload/status");
+}
+
+export function uploadJob(jobId) {
+  return request(`/api/upload/${encodeURIComponent(jobId)}`);
+}
+
+/**
+ * Sends a recording and reports progress while it goes.
+ *
+ * XMLHttpRequest rather than fetch, for one reason: fetch has no upload progress event.
+ * A hundred megabytes over a slow connection with no indicator reads as a broken page,
+ * and the whole point of this control is that a visitor can bring their own footage.
+ */
+export function uploadMedia(file, { label = "", language = "", onProgress } = {}) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("label", label);
+  form.append("language", language);
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.withCredentials = true;
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) onProgress?.(event.loaded / event.total);
+    });
+
+    xhr.addEventListener("load", () => {
+      let payload = null;
+      try {
+        payload = JSON.parse(xhr.responseText);
+      } catch {
+        // An error response may not carry a body
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(payload);
+        return;
+      }
+      const detail = payload?.detail ?? `${xhr.status} ${xhr.statusText}`;
+      const error = new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      error.status = xhr.status;
+      reject(error);
+    });
+
+    xhr.addEventListener("error", () => reject(new Error("The upload failed.")));
+    xhr.addEventListener("abort", () => reject(new Error("The upload was cancelled.")));
+    xhr.send(form);
+  });
+}
+
+/** Polls until the ingest settles. Whisper on CPU takes seconds to minutes. */
+export async function waitForUpload(jobId, { intervalMs = 1000, timeoutMs = 600000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let job = await uploadJob(jobId);
+  while (job.status === "queued" || job.status === "running") {
+    if (Date.now() > deadline) throw new Error(`The ingest timed out (${job.status})`);
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    job = await uploadJob(jobId);
+  }
+  return job;
+}
+
 export function requestRender(segments) {
   return request("/api/render", {
     method: "POST",

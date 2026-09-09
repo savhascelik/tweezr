@@ -189,6 +189,95 @@ const actions = {
   },
 
   /**
+   * Brings the visitor's own recording into the library.
+   *
+   * Two phases, because they fail differently and take different amounts of time. The
+   * upload is network-bound and reports progress; the ingest is CPU-bound on the server
+   * and reports a stage. Collapsing them into one spinner would hide which of the two is
+   * slow, and on a long clip that is the only question worth answering.
+   *
+   * On success the library statistics are re-read rather than patched locally, so the take
+   * count and the search example come from the same place they always do.
+   */
+  async upload(file, { label = "", language = "" } = {}) {
+    if (!file) return null;
+
+    store.setUpload({
+      status: "sending",
+      stage: "",
+      progress: 0,
+      filename: file.name,
+      error: "",
+      result: null,
+    });
+    store.setStatus("busy", t("status.uploading", { name: file.name }));
+
+    let queued;
+    try {
+      queued = await api.uploadMedia(file, {
+        label,
+        language,
+        onProgress: (fraction) => store.setUpload({ progress: fraction }),
+      });
+    } catch (error) {
+      store.setUpload({ status: "failed", error: error.message, progress: 0 });
+      store.setStatus("error", error.message);
+      throw error;
+    }
+
+    store.setUpload({
+      status: queued.status,
+      stage: queued.stage,
+      progress: 1,
+      takeId: queued.take_id,
+    });
+    if (queued.session) store.patch({ session: queued.session });
+    store.setStatus(
+      "busy",
+      t("status.ingesting", { seconds: Math.round(queued.media_seconds) })
+    );
+
+    try {
+      const job = await api.waitForUpload(queued.job_id);
+      if (job.status !== "done") {
+        throw new Error(job.error || `The ingest failed (${job.status})`);
+      }
+
+      // Re-read rather than patch: the take count and the search example both come from
+      // here, and a locally invented number would drift from the real library.
+      const library = await api.libraryStats();
+      store.patch({ library: library.stats });
+      if (job.session) store.patch({ session: job.session });
+
+      store.setUpload({
+        status: "done",
+        stage: "",
+        result: job,
+        count: (store.getState().upload.count ?? 0) + 1,
+      });
+      store.setStatus(
+        "ok",
+        t("status.ingested", {
+          take: job.take_id,
+          lines: job.lines,
+          language: job.language,
+        })
+      );
+      return job;
+    } catch (error) {
+      store.setUpload({ status: "failed", error: error.message });
+      store.setStatus("error", error.message);
+      // The server refunds a charged ingest that failed, so the balance has to be re-read
+      // or the interface would keep showing the deducted figure.
+      api
+        .readSession()
+        .then((session) => store.patch({ session: session.session }))
+        .catch(() => {});
+      throw error;
+    }
+  },
+
+  /**
    * The in-page assistant. The candidates the agent found and the proposal it placed go
    * through the SAME store operations the WebMCP tools use — so both entry points change
    * one timeline, and the human never has to tell which was used.
@@ -327,6 +416,7 @@ const ui = createUI(root, {
   onJump: actions.jump,
   onRender: () => actions.render().catch(() => {}),
   onChat: (message) => actions.chat(message).catch(() => {}),
+  onUpload: (file, options) => actions.upload(file, options).catch(() => {}),
 });
 
 const player = createPlayer({
@@ -393,6 +483,25 @@ export const ready = (async () => {
         available: false,
         reason: t("assistant.statusFailed", { error: error.message }),
       });
+    }
+
+    // Same shape: uploads need a transcriber on the server, and if there is none the
+    // control says so instead of failing when used.
+    try {
+      const upload = await api.uploadStatus();
+      store.setUpload({
+        available: upload.available,
+        reason: upload.available
+          ? ""
+          : upload.reason_code
+            ? t(`upload.reason.${upload.reason_code}`)
+            : upload.reason,
+        limits: upload.limits,
+        costPerMinute: upload.cost_per_minute,
+        count: upload.uploads ?? 0,
+      });
+    } catch (error) {
+      store.setUpload({ available: false, reason: error.message });
     }
 
     const webmcp = await installTools({ actions, store });
