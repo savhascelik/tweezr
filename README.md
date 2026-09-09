@@ -20,7 +20,10 @@ which timecode.
 
 This repository is mid-build. As of now, **working and tested**:
 
-- Word-level timecodes from media, on CPU, at eight times realtime
+- Word-level timecodes from media, on CPU, at eight times realtime, **in any language** —
+  multilingual model by default, language detected or named
+- Your own audio or video into the library in one command: `python -m dev.add_take`
+- Video end to end, verified: search → word picking → mp4 render with h264 and aac
 - ClickHouse ingest with word and phrase search, filtered by delivery — 20 query tests
 - Sample-accurate cutting and splicing on word boundaries
 - Assembling a new sentence from single words taken across different recordings
@@ -79,7 +82,7 @@ alignment cannot answer. Gemini multimodal handles it, one call per take.
 | `server/` | FastAPI: API, sessions, credits, render, ADK assistant |
 | `web/` | Timeline interface, virtual splicing, WebMCP tools, approval dialog |
 | `demo/` | Demo corpus — **content**, has to be in the image |
-| `dev/` | Local ClickHouse, corpus build and load, deployment checks |
+| `dev/` | Local ClickHouse, `add_take`, corpus build and load, deployment checks |
 | `scratch/` | Generated noise, fully ignored |
 
 The split between `demo/` and `scratch/` is deliberate: we do not commit what the code

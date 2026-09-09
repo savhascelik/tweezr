@@ -240,6 +240,17 @@ def library_stats(request: Request, response: Response, project: str = config.DE
         raise HTTPException(status_code=503, detail=f"Query failed: {error}")
 
     stats = dict(zip(result.column_names, result.result_rows[0]))
+
+    # A real line from this library, for the search box's example. It has to come from the
+    # data: the interface used to carry an English sentence as a constant, which is a
+    # misleading hint the moment the footage is in another language.
+    try:
+        sample = clickhouse().query(queries.SAMPLE_LINE, parameters={"project": project})
+        stats["sample_line"] = sample.result_rows[0][0] if sample.result_rows else ""
+    except Exception:
+        # Cosmetic. An empty library or a failed query means no example, not no stats.
+        stats["sample_line"] = ""
+
     return {"project": project, "stats": stats}
 
 

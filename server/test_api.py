@@ -255,6 +255,14 @@ def main() -> int:
 
             stats = client.get(f"/api/library/stats?project={API_TEST_PROJECT}")
             check("library stats", stats.json()["stats"]["takes"], 3)
+            # The search box's example comes from the library, not from a constant. A
+            # hardcoded English sentence is a misleading hint the moment the footage is
+            # in another language.
+            check(
+                "the example line comes from the data",
+                stats.json()["stats"]["sample_line"],
+                "I never asked for this",
+            )
 
     print("\n=== line words (the clickable transcript) ===")
     if clickhouse is None:

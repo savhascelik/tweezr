@@ -117,6 +117,27 @@ WHERE project_id = {project:String}
 ORDER BY take_id, line_id, start_ms
 """
 
+# One real line from the library, used as the search box's example.
+#
+# The example has to come from the data rather than a constant, because the constant was
+# an English sentence and the library can be in any language. A hint in a language the
+# footage is not in is worse than no hint.
+#
+# The longest line is chosen deliberately: a three-word line makes a poor example of
+# phrase search, and length correlates with being a real sentence rather than a stray
+# interjection.
+SAMPLE_LINE = """
+SELECT arrayStringConcat(
+           arrayMap(t -> tupleElement(t, 2), arraySort(groupArray((start_ms, word)))),
+           ' '
+       ) AS text
+FROM words
+WHERE project_id = {project:String}
+GROUP BY take_id, line_id
+ORDER BY count() DESC, take_id, line_id
+LIMIT 1
+"""
+
 # The agent's "what is in the library" question. Behind the get_library_stats tool.
 LIBRARY_STATS = """
 SELECT

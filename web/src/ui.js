@@ -62,9 +62,10 @@ const TONE_GLYPH = {
 
 const TONES = ["neutral", "calm", "tense", "angry", "whisper", "shouted"];
 
-/* The demo corpus line, shown as the search example. Real data, so it is not a
-   translatable string; the "e.g." wrapper around it is. */
-const EXAMPLE_LINE = "I never asked for this";
+/* Fallback for the search example, used only before the library has loaded. The real
+   example is a line out of the library itself — a hardcoded English sentence would be a
+   misleading hint the moment the footage is in another language. */
+const EXAMPLE_FALLBACK = "\u2026";
 
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
@@ -1155,7 +1156,9 @@ export function createUI(root, handlers) {
     if (nodes.phrase.value !== state.query.phrase) {
       nodes.phrase.value = state.query.phrase;
     }
-    nodes.phrase.placeholder = t("search.example", { line: EXAMPLE_LINE });
+    // The example is a real line from this library, whatever language it is in.
+    const example = state.library?.sample_line || EXAMPLE_FALLBACK;
+    nodes.phrase.placeholder = t("search.example", { line: example });
     if (currentTone !== state.query.tone) {
       currentTone = state.query.tone;
       syncMoods();

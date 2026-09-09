@@ -314,6 +314,40 @@ console.log("=== empty state ===");
   checkThat("the audio-only notice is off", firstByClass(root, "stage-fallback").hidden);
 }
 
+console.log("\n=== the search example is language independent ===");
+{
+  // It used to be an English sentence held as a constant in ui.js. That is a misleading
+  // hint the moment the footage is in another language, so it comes from the library now.
+  const { root, ui } = mount();
+  const phrase = () => findAll(root, (node) => node.classes.has("searchbar-input"))[0];
+
+  ui.render(
+    baseState({
+      library: { takes: 2, words: 14, vocabulary: 9, sample_line: "Işık söndü, ben hiç istemedim" },
+    })
+  );
+  checkThat(
+    "the example is a real line from the library",
+    phrase().placeholder.includes("Işık söndü"),
+    phrase().placeholder
+  );
+  checkThat(
+    "and carries no English leftover",
+    !phrase().placeholder.includes("I never asked"),
+    phrase().placeholder
+  );
+
+  // An empty library has no line to show, and inventing one would be the original bug
+  const empty = mount();
+  empty.ui.render(baseState({ library: { takes: 0, words: 0, vocabulary: 0, sample_line: "" } }));
+  const emptyPlaceholder = findAll(empty.root, (n) => n.classes.has("searchbar-input"))[0].placeholder;
+  checkThat(
+    "an empty library invents no example",
+    !/[A-Za-z]{3}/.test(emptyPlaceholder),
+    emptyPlaceholder
+  );
+}
+
 console.log("\n=== no invented metrics ===");
 {
   // The mockup carried a handful of confident numbers we never measured. An

@@ -55,17 +55,51 @@ TONES = ("neutral", "calm", "tense", "angry", "whisper", "shouted")
 # so "don't" stays one word, and so does a hyphen, so "well-known" stays one word.
 _EDGE_PUNCT = "\"'`.,!?;:()[]{}<>…—–-*_"
 
+# The dotted and dotless i, folded together for the search key only.
+#
+# The principle: the search key folds distinctions that capitalisation destroys. Case is
+# the obvious one and casefold already handles it. The Turkish i is the other one, and it
+# needs saying out loud:
+#
+#   "İ".casefold() is "i" + U+0307, a combining dot, which does NOT equal "i" — so
+#   searching "istanbul" would not find "İstanbul".
+#   Turkish capitalises "ı" as "I", and "I".casefold() is "i" — so a sentence-initial
+#   "Işık" becomes "işık" while the word the editor types, "ışık", stays dotless.
+#
+# Both directions break search on real Turkish transcripts, and neither can be resolved
+# without knowing the language of every individual word. Folding them costs the
+# ı/i distinction in the KEY; the `word` column keeps the original spelling and that is
+# what appears on screen.
+_I_FOLD = str.maketrans({"\u0130": "i", "\u0131": "i", "I": "i"})
+
 
 def normalize_word(word: str) -> str:
-    """The search key. Lowercased, edge punctuation removed, Unicode NFKC.
+    """The search key. Case folded, edge punctuation removed, Unicode NFKC.
+
+    Language independent by construction: casefold handles German, French, Greek and
+    Cyrillic correctly, and scripts without case pass through untouched.
 
     >>> normalize_word('"Asked,')
     'asked'
     >>> normalize_word("don't")
     "don't"
+    >>> normalize_word("Straße") == normalize_word("STRASSE")
+    True
+    >>> normalize_word("ÉCOLE")
+    'école'
+
+    The Turkish i, dotted and dotless, folds to plain i so that capitalisation cannot
+    hide a word from search:
+
+    >>> normalize_word("İstanbul") == normalize_word("istanbul")
+    True
+    >>> normalize_word("Işık") == normalize_word("ışık")
+    True
+    >>> normalize_word("DÜŞÜNCE")
+    'düşünce'
     """
     text = unicodedata.normalize("NFKC", word).strip()
-    return text.strip(_EDGE_PUNCT).casefold()
+    return text.strip(_EDGE_PUNCT).translate(_I_FOLD).casefold()
 
 
 def normalize_phrase(phrase: str) -> list[str]:

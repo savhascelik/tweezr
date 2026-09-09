@@ -1,13 +1,28 @@
-"""Media -> word-level timecodes. Runs on CPU.
+"""Media -> word-level timecodes. Runs on CPU, in any language.
 
 The output has the SAME shape as fixture.json. The tone field is left empty; the Gemini
 pass fills it.
 
     python -m pipeline.transcribe scratch\\sample.wav --take-id S01_T01 --speaker MAYA --out scratch\\out.json
+    python -m pipeline.transcribe kayit.mp4 --take-id S01_T01 --language tr
 
 Why faster-whisper: this is alignment work, not generative work. Plain Whisper reports
 timestamps at utterance level and can be off by seconds; word level arrives through
 word_timestamps. GPU is only for speed — CPU is enough for clips under three minutes.
+
+ON LANGUAGE
+The default model is multilingual and the language is detected from the audio. That is a
+deliberate default rather than a convenience: the `.en` models physically cannot
+transcribe anything else, and picking one as the default would have made the whole
+product English-only without ever saying so.
+
+Naming a language with --language beats detection when you already know it, because
+detection reads only the opening seconds and a quiet or musical intro can mislead it. It
+also matters for orthography: told it is Turkish, Whisper writes "ışık" rather than
+guessing at a spelling, and the search key depends on that.
+
+For anything other than English, `small` is a noticeable step up from `base` and still
+runs on CPU.
 """
 
 from __future__ import annotations
@@ -30,10 +45,24 @@ def transcribe(
     camera: str = "",
     speaker: str = "",
     source_url: str = "",
-    model_size: str = "base.en",
-    language: str | None = "en",
+    model_size: str = "base",
+    language: str | None = None,
 ) -> tuple[dict, dict]:
-    """Turns one media file into an ingest document. Returns (doc, stats)."""
+    """Turns one media file into an ingest document. Returns (doc, stats).
+
+    `model_size` defaults to the multilingual `base`; `language=None` means detect it
+    from the audio. Pass a language when you know it — detection only reads the opening
+    seconds.
+    """
+    # Checked before the model loads, because loading one is slow and this is a mistake
+    # worth refusing immediately. An .en model cannot transcribe anything else and does
+    # not fail loudly about it: it returns confident nonsense in English.
+    if model_size.endswith(".en") and language not in (None, "en"):
+        raise ValueError(
+            f"Model {model_size!r} is English-only but language={language!r} was asked "
+            f"for. Use a multilingual model: base, small, medium, large-v3."
+        )
+
     from faster_whisper import WhisperModel
 
     load_started = time.perf_counter()
@@ -100,6 +129,12 @@ def transcribe(
 
     stats = {
         "model": model_size,
+        # What Whisper actually worked in. Reported whether it was named or detected,
+        # because a wrong language is the difference between a transcript and noise, and
+        # you want to see it before ingesting.
+        "language": info.language,
+        "language_probability": round(float(info.language_probability or 0), 3),
+        "language_source": "given" if language else "detected",
         "media_seconds": round(info.duration, 2),
         "model_load_seconds": round(load_seconds, 2),
         "transcribe_seconds": round(run_seconds, 2),
@@ -123,8 +158,16 @@ def main() -> int:
     parser.add_argument("--camera", default="")
     parser.add_argument("--speaker", default="")
     parser.add_argument("--source-url", default="")
-    parser.add_argument("--model", default="base.en", help="tiny.en, base.en, small.en, medium ...")
-    parser.add_argument("--language", default="en")
+    parser.add_argument(
+        "--model",
+        default="base",
+        help="multilingual: base, small, medium, large-v3. English-only: base.en, small.en",
+    )
+    parser.add_argument(
+        "--language",
+        default="",
+        help="ISO code such as tr, en, de. Empty means detect it from the audio.",
+    )
     parser.add_argument("--out", type=Path, default=Path("out.json"))
     args = parser.parse_args()
 
