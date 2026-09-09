@@ -1,200 +1,207 @@
-# server — API ve tek origin
+# server — the API and the single origin
 
-FastAPI. API, medya ve (birazdan) sayfa aynı origin'den servis ediliyor.
+FastAPI. The API, the media and the page are all served from one origin.
 
-## Tek origin neden pazarlık konusu değil
+## Why one origin is not negotiable
 
-WebMCP'nin üç gereği burada birleşiyor:
+Three WebMCP requirements meet here:
 
-1. **Secure context** — Cloud Run HTTPS veriyor.
-2. **`Origin-Agent-Cluster: ?1` header'ı ŞART.** Eksikse `registerTool` `SecurityError`
-   ile reddediyor ve hiçbir ipucu vermiyor. Geçen projede bunu deploy'da öğrendik, o
-   yüzden `server/test_api.py` bu header'ı test ediyor.
-3. **Session cookie'si API ile aynı origin'de.** Ajan tarayıcıdan oturum bağlamını
-   devralıyor, yani ayrı bir token akışı kurmuyoruz.
+1. **Secure context** — Cloud Run gives us HTTPS.
+2. **The `Origin-Agent-Cluster: ?1` header is mandatory.** Without it `registerTool`
+   rejects with a `SecurityError` and offers no hint as to why. We learned that during a
+   deploy on the previous project, which is why `server/test_api.py` asserts the header.
+3. **The session cookie shares the API's origin.** The agent inherits the session
+   context from the browser, so there is no separate token flow to build.
 
-CORS yok ve olmayacak: aynı origin'de gereksiz, açmak sadece saldırı yüzeyi ekler.
+There is no CORS and there will not be: on one origin it is unnecessary, and enabling it
+would only add attack surface.
 
-## Giriş zorunlu değil, ve bu bir tasarım kararı
+## There is no login, and that is a design decision
 
-Araçlar sayfa JavaScript'i tarafından kaydediliyor. Jüri URL'yi açtığında login duvarı
-görürse uygulama JS'i hiç çalışmaz, `registerTool` çağrılmaz, ajan **sıfır araç** görür.
-Üstüne OAuth redirect akışları ajan güdümlü tarayıcıda kırılgan.
+Tools are registered by page JavaScript. If a judge opens the URL and hits a login wall,
+the application's JS never runs, `registerTool` is never called, and the agent sees
+**zero tools**. On top of that, OAuth redirect flows are fragile inside an
+agent-driven browser.
 
-O yüzden: ilk yüklemede anonim oturum, kullanıcı hiçbir şey yapmıyor.
+So: an anonymous session on first load, with the user doing nothing.
 
-**Bunun bedeli: API kimlik doğrulamasız.** Karşılığında konan frenler:
+**The cost of that is an unauthenticated API.** The brakes that pay for it:
 
-| Fren | Nerede |
+| Brake | Where |
 | --- | --- |
-| Oturum başına kredi, atomik düşürme | `sessions.charge`, `BEGIN IMMEDIATE` |
-| IP başına saatlik yeni oturum limiti | `config.MAX_SESSIONS_PER_IP_PER_HOUR` |
-| Proje allowlist'i | `routes.validate_project` |
-| Ton allowlist'i | `routes.validate_tone` |
-| Cümle uzunluğu tavanı | `config.MAX_PHRASE_WORDS` |
-| Parametreli sorgular, string interpolasyon yok | `pipeline/queries.py` |
-| Sadece okuma yapan uçlar | render dışında hepsi |
+| Per-session credits, atomic deduction | `sessions.charge`, `BEGIN IMMEDIATE` |
+| Hourly cap on new sessions per IP | `config.MAX_SESSIONS_PER_IP_PER_HOUR` |
+| Project allowlist | `routes.validate_project` |
+| Delivery allowlist | `routes.validate_tone` |
+| Phrase length ceiling | `config.MAX_PHRASE_WORDS` |
+| Parameterised queries, never string interpolation | `pipeline/queries.py` |
+| Read-only endpoints | everything except render |
 
-## Kredi
+## Credits
 
-Tek cümle: **"wow" yolu bedava, pahalı yol ölçülü.**
+In one sentence: **the impressive path is free, the expensive path is metered.**
 
-| İşlem | Kredi |
+| Operation | Credits |
 | --- | --- |
 | `find_line`, `propose_cut`, `preview_segment` | 0 |
 | `commit_render` | 1 |
-| Kendi medyasını ingest | dakika başına 1 |
+| Ingesting your own media | 1 per minute |
 
-Arama bedava, çünkü jürinin ürünün değerini görmesi hiçbir duvara çarpmamalı. Kredi
-burada gelir değil, sürpriz faturaya karşı fren.
+Search is free because a judge should be able to see what the product is worth without
+hitting a wall. Credits are not revenue here, they are a brake against a surprise bill.
 
-Defter SQLite'ta. Cloud Run'ın dosya sistemi kalıcı değil, yani yeniden başlatmada guest
-oturumları sıfırlanıyor — bu bir hata değil, kabul edilen davranış: ziyaretçi yeni bir
-session ve yeni bir kota alıyor.
+The ledger is SQLite. Cloud Run's filesystem is not durable, so guest sessions reset on
+restart — not a bug but accepted behaviour: a visitor gets a fresh session and a fresh
+allowance.
 
-## Uçlar
+## Endpoints
 
-| Uç | İş | Kredi |
+| Endpoint | Job | Credits |
 | --- | --- | --- |
-| `GET /healthz` | sağlık | - |
-| `GET /api/session` | oturum + bakiye + fiyat listesi (yoksa oluşturur) | 0 |
-| `POST /api/find_line` | cümle → sıralı aday listesi | 0 |
-| `GET /api/word/{word}` | kelimenin geçtiği yerler (kelime cımbızlama) | 0 |
-| `GET /api/library/stats` | kütüphanede ne var | 0 |
-| `POST /api/render` | onaylanmış kesimi kuyruğa alır | 1 |
-| `GET /api/render/{id}` | iş durumu (oturum sahibine) | 0 |
-| `GET /api/render/{id}/file` | çıktıyı indir (oturum sahibine) | 0 |
-| `GET /api/chat/status` | asistan açık mı, kaç mesaj hakkı kaldı | 0 |
-| `POST /api/chat` | sayfa içi asistan (ADK) | sayaç |
-| `GET /media/*` | medya, HTTP range destekli | 0 |
+| `GET /healthz` | health | - |
+| `GET /api/session` | session, balance, price list (creates one if absent) | 0 |
+| `POST /api/find_line` | phrase → ranked candidates | 0 |
+| `GET /api/word/{word}` | every occurrence of a word (single-word assembly) | 0 |
+| `GET /api/library/stats` | what the library holds | 0 |
+| `POST /api/render` | queue an approved cut | 1 |
+| `GET /api/render/{id}` | job status, owner only | 0 |
+| `GET /api/render/{id}/file` | download the output, owner only | 0 |
+| `GET /api/chat/status` | is the assistant on, how many messages left | 0 |
+| `POST /api/chat` | in-page assistant (ADK) | counter |
+| `GET /media/*` | media, HTTP range supported | 0 |
 
-`find_line` **LLM gerektirmiyor**: cümle → ClickHouse → sıralı aday. Doğal dili araç
-parametrelerine çeviren ADK ajanı bunun üstüne biniyor. Yani arama Gemini anahtarı
-olmadan da tam çalışıyor.
+`find_line` **needs no LLM**: phrase in, ClickHouse out, ranked. The ADK agent that turns
+natural language into these parameters sits on top of it. Which means search works
+fully with no Gemini key.
 
-Sıralama ürün mantığı, SQL'de değil `routes.py`'de: ton skoru yüksek olan önce. Ton
-filtresi verildiğinde bu doğrudan "o tonun en iyi örneği önce" oluyor.
+Ranking is product logic and lives in `routes.py` rather than the SQL: the highest
+delivery confidence first. Given a tone filter, that reads directly as "the best example
+of that delivery first".
 
 ## Render
 
-Tek geri alınamaz ve tek kredi harcayan adım. Tarayıcı tarafında insanın onayı olmadan
-buraya hiç gelinmiyor (bkz. `web/src/approve.js`).
+The single irreversible step and the only one that spends credit. On the browser side it
+is never reached without human approval, see `web/src/approve.js`.
 
-### Kesilecek dosya yolu istekten GELMİYOR
+### The path to the file being cut does NOT come from the request
 
-En önemli karar bu. İstek sadece `candidate_id` (`take_id:line_id:start_ms`) ve zaman
-aralığı taşıyor. Medya yolu ClickHouse'daki `source_url`'den türetiliyor, `MEDIA_DIR`
-altına çözülüyor ve gerçekten orada olduğu doğrulanıyor.
+This is the most important decision here. The request carries only a `candidate_id`
+(`take_id:line_id:start_ms`) and a time range. The media path is derived from
+`source_url` in ClickHouse, resolved under `MEDIA_DIR`, and checked to actually be there.
 
-İstemciye dosya adı söyletmek path traversal demek olurdu — ve ffmpeg'e verilen her yol
-okunabilir bir dosyadır, yani `../../.env` gerçek bir sızma yolu. `resolve_media` hem
-taban adını alıyor hem çözülen yolun izinli dizinde kaldığını doğruluyor; test
-`../../.env`, `..\\..\\.env`, `/etc/passwd`, `..` ve boş girdiyi deniyor.
+Letting the client name a file would be path traversal — and every path handed to ffmpeg
+is a readable file, so `../../.env` is a real exfiltration route. `resolve_media` takes
+the basename *and* verifies the resolved path stays inside the allowed directory; the
+test tries `../../.env`, `..\\..\\.env`, `/etc/passwd`, `..` and empty input.
 
-Zaman aralığı da doğrulanıyor: take'in ClickHouse'daki bilinen süresinin dışına
-taşamıyor ve toplam çıktı 10 dakikayı geçemiyor. Aksi halde tek istekle saatlerce CPU
-yakılabilirdi.
+The time range is validated too: it cannot fall outside the take's known duration in
+ClickHouse, and total output cannot exceed ten minutes. Otherwise a single request could
+burn hours of CPU.
 
-### Sıra: önce doğrula, sonra kredi düş
+### Order: validate first, charge second
 
-Reddedilen bir istek için kredi düşürmek kullanıcının hatasını ona ödetmek olur. Test
-bunu ayrıca kontrol ediyor: geçersiz istekten sonra bakiye değişmiyor.
+Charging a credit for a request we rejected means making the user pay for their own
+mistake. A test checks this separately: the balance is unchanged after an invalid call.
 
-### concat filtresi, demuxer değil
+### The concat filter, not the demuxer
 
-Demuxer tüm girdilerin aynı codec ve parametrelerde olmasını istiyor; farklı take'ler
-farklı kayıtlardan gelebilir. Filtre yeniden encode ediyor ve bunu tolere ediyor,
-girdiler ortak örnekleme hızına normalize ediliyor.
+The demuxer wants every input to share codec and parameters, and different takes can come
+from different recordings. The filter re-encodes and tolerates that, with inputs
+normalised to a common sample rate.
 
-Çıktı formatı girdiye göre: tüm kaynaklarda video akışı varsa MP4, yoksa WAV. Tespit
-ffmpeg'in kendi akış özetinden okunuyor (`imageio-ffmpeg` ffprobe getirmiyor). Sessiz
-fallback yok — seçilen mod iş kaydında bildiriliyor.
+Output container follows the inputs: MP4 if every source has a video stream, WAV
+otherwise. Detection reads ffmpeg's own stream summary, since `imageio-ffmpeg` ships no
+ffprobe. There is no silent fallback — the chosen mode is reported on the job.
 
-### Çıktılar StaticFiles ile mount EDİLMİYOR
+### Outputs are NOT mounted as StaticFiles
 
-`/api/render/{id}/file` işin oturuma ait olduğunu kontrol edip dosyayı veriyor. Mount
-etmek dizini listelenebilir ya da kimliği bilen herkes tarafından indirilebilir yapardı.
-Başka oturumun işi **404** dönüyor, 403 değil: var olduğunu bile söylemiyoruz.
+`/api/render/{id}/file` checks the job belongs to the session and then serves the file.
+Mounting would make the directory listable, or downloadable by anyone who learns an id.
+Another session's job returns **404**, not 403: we do not confirm it exists.
 
-## ADK ajanı neden WebMCP'nin altında değil
+## Why the ADK agent does not sit under WebMCP
 
-Blueprint "WebMCP `find_line` → ADK ajanı" diyordu. Yanlıştı.
+The blueprint had "WebMCP `find_line` → ADK agent". That was wrong.
 
-Harici ajan (ChatGPT in-app browser) **zaten bir LLM**. `find_line`'ı yapılandırılmış
-parametrelerle çağırıyor. Onu bir de bizim ajanımızdan geçirmek, ilk modelin çoktan
-yaptığı parametre eşleştirmesini ikinci bir modele yaptırmak olur — gecikme ve hata
-yüzeyinden başka bir şey eklemez. O yüzden WebMCP araçları doğrudan API'ye gidiyor ve
-**arama Gemini anahtarı olmadan tam çalışıyor.**
+The external agent, ChatGPT's in-app browser, **is already an LLM**. It calls `find_line`
+with structured parameters. Routing those through our agent as well means asking a second
+model to redo a mapping the first one already did, which adds latency and failure surface
+and nothing else. So the WebMCP tools go straight to the API, and **search works fully
+without a Gemini key.**
 
-ADK ajanının işi başka: **ajanı olmayan kullanıcı.** Çoğu insan ChatGPT in-app
-browser'da gezmiyor. Sayfa kendi asistanını taşıyınca ürün harici bir ajan olmadan da
-doğal dille kullanılabiliyor, ve iki giriş kapısı da aynı ClickHouse sorgularının
-üstünde çalışıyor.
+The ADK agent is for something else: **the visitor with no agent.** Most people are not
+browsing inside ChatGPT's in-app browser. Carrying our own assistant means the product is
+usable in natural language on its own, and both entry points sit on the same ClickHouse
+queries.
 
-### Üç araç, LLM'siz test edilebilir
+### Three tools, testable without an LLM
 
-`agent_tools.py` içindeki fonksiyonlar saf: `find_line`, `assemble_proposal`,
-`get_library_stats`. LLM olmadan çağrılabiliyorlar ve testleri de öyle koşuyor.
+The functions in `agent_tools.py` are plain: `find_line`, `assemble_proposal`,
+`get_library_stats`. They can be called without an LLM and the tests do exactly that.
 
-İki şey kasıtlı:
+Three things there are deliberate.
 
-**Docstring'ler ajanın gördüğü şemadır.** ADK araç tanımını imza ve docstring'den
-üretiyor, yani o metin dokümantasyon değil arayüz. Bu yüzden İngilizce ve fonksiyonun
-ne yaptığından çok **ne zaman kullanılacağını** anlatıyorlar.
+**The docstrings are the schema the agent sees.** ADK builds the tool definition from the
+signature and the docstring, so that text is interface rather than documentation. Which
+is why they describe **when to reach for** each tool more than what it does.
 
-**Hatalar exception değil sözlük.** `{"error": ..., "allowed_tones": [...]}` dönüyor.
-Ajan okuyup düzeltebiliyor; exception ona sadece "başarısız" derdi.
+**Failures return dicts, not exceptions.** `{"error": ..., "allowed_tones": [...]}` is
+something a model can read and correct; an exception would only tell it that something
+broke.
 
-**Öneri tarayıcıya toplayıcı üzerinden dönüyor.** Ajan sunucuda koşuyor, sayfanın
-store'una dokunamıyor. Araç niyetini istek başına bir `ContextVar`'a yazıyor, cevap onu
-tarayıcıya taşıyor ve sayfa `store.applyAgentResult()` ile uyguluyor — yani harici ajan
-ile sayfa içi sohbet aynı timeline'ı aynı yoldan değiştiriyor. `ContextVar` global bir
-sözlük olsaydı iki kullanıcının önerisi birbirine bulaşırdı.
+**The proposal reaches the browser through a collector.** The agent runs server-side and
+cannot touch the page store. The tool records its intent in a per-request `ContextVar`,
+the response carries it back, and the page applies it through `store.applyAgentResult()` —
+so the external agent and the in-page assistant change the same timeline the same way. A
+module-level dict would have leaked one visitor's proposal into another's.
 
-`config.DEMO_PROJECT` araçlarda sabit. Bu bir güvenlik özelliği: ajan başka bir projeye
-bakmaya ikna edilemiyor.
+`config.DEMO_PROJECT` is fixed in the tools. That is a security property: the agent
+cannot be talked into querying another project.
 
-### Anahtar yoksa
+### With no key
 
-Sohbet kapanıyor, ürün çalışmaya devam ediyor: arama paneli, timeline, önizleme ve
-provenance hepsi LLM'siz. `/api/chat/status` sebebi açıkça söylüyor ve arayüz onu
-gösteriyor. Bu bilinçli — anahtarsız bir ortamda bile ürünün ne yaptığı görülebilmeli.
+The assistant closes and the product keeps working: search panel, timeline, preview and
+provenance are all LLM-free. `/api/chat/status` states the reason and the interface shows
+it. This is intentional — what the product does should be visible even in an environment
+with no key.
 
-### Sohbet krediyle değil sayı ile ölçülüyor
+### The assistant is metered by count, not credits
 
-Kredi render ve ingest için. Sohbet bir LLM çağrısı, farklı bir kaynak, ve bedava
-bırakmak açık bir LLM ucu demek. `MAX_CHAT_MESSAGES` (40) sayacı `chat_used`
-kolonunda ve `consume_chat` kredi düşürmeyle aynı `BEGIN IMMEDIATE` kilidini
-kullanıyor — iki eşzamanlı mesaj aynı sayacı okuyup ikisi de geçerse sınır anlamsız
-olurdu.
+Credits pay for rendering and ingest. An assistant turn is an LLM call, a different
+resource, and leaving it free would publish an open LLM endpoint. The
+`MAX_CHAT_MESSAGES` (40) counter lives in the `chat_used` column, and `consume_chat`
+takes the same `BEGIN IMMEDIATE` lock as the credit deduction — two concurrent messages
+reading the same counter and both passing would make the limit meaningless.
 
-## Çalıştırma
+## Running
 
 ```powershell
-# app/ kökünden
+# from the app/ root
 docker compose -f dev\docker-compose.yml up -d
-.venv\Scripts\python.exe -m pipeline.ingest pipeline\fixture.json --replace
+.venv\Scripts\python.exe -m dev.load_demo
 .venv\Scripts\python.exe -m uvicorn server.main:app --reload --port 8080
 ```
 
-`http://127.0.0.1:8080/api/docs` OpenAPI arayüzünü veriyor.
+`http://127.0.0.1:8080/api/docs` serves the OpenAPI UI.
 
-## Test
+## Tests
 
 ```powershell
 .venv\Scripts\python.exe -m server.test_api
 ```
 
-70 test: güvenlik header'ları, oturum oluşturma ve korunması, çerez bayrakları, oturum
-kimliğinin gövdeye sızmaması, girdi doğrulama, ClickHouse aramasının sıralaması ve
-provenance alanları, render'ın kredi harcamaması, kredi defterinin ve sohbet sayacının
-atomikliği, sohbetin anahtarsız durumda ne söylediği, ve ajan araçlarının LLM olmadan
-tüm yolları.
+101 tests: security headers, session creation and reuse, cookie flags, the session id
+staying out of response bodies, input validation, media URL mapping, five hostile paths
+through `resolve_media`, search ranking and provenance fields, a real render whose output
+length matches the requested spans, cross-session isolation on both status and download,
+402 with no job when credits are short, atomicity of both the credit ledger and the
+assistant counter, what the assistant says with no key, and every path through the agent
+tools without an LLM.
 
-Atomiklik testleri bakiyenin/sınırın iki üç katı kadar eşzamanlı çağrı yapıp tam
-sınır kadarının geçtiğini doğruluyor. Bu olmadan iki eşzamanlı render aynı krediyi iki
-kere harcayabilir.
+The atomicity tests fire two or three times the balance or limit concurrently and assert
+exactly the limit succeeds. Without that, two concurrent renders could spend the same
+credit twice.
 
-Testler hermetik: kontrat fixture'ını `__api_test__` projesine yazıp sonunda siliyorlar.
-Önce "demo"da ne varsa ona bakıyorlardı ve `dev/seed_demo` o veriyi değiştirdiğinde üç
-test düşmüştü.
+The tests are hermetic: they write the contract fixture into an `__api_test__` project and
+drop it afterwards. They used to assert against whatever happened to be in `demo`, and
+three of them broke the moment `dev/seed_demo` replaced that data.

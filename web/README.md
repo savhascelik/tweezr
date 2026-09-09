@@ -1,187 +1,213 @@
-# web — timeline ve sanal kırpma
+# web — the timeline and virtual splicing
 
-Kurgucunun çalıştığı ekran. Build adımı yok: servis edilen dosya kaynağın kendisi.
+The screen the editor works on. No build step: the file being served is the source.
 
-## Neden bundler yok
+## Why there is no bundler
 
-Bu arayüzde React'in ya da bir bundler'ın çözdüğü bir problem yok. İhtiyaç duyulan tek
-şey WebMCP araçlarının değiştirdiği durumu yansıtan bir store, o da `store.js`'deki
-40 satır. Karşılığında kazanılanlar:
+Nothing in this interface is a problem React or a bundler solves. The only real
+requirement is state that reflects what the WebMCP tools change, and that is forty lines
+in `store.js`. What dropping the build step buys:
 
-- Cloud Run imajında node aşaması yok, deploy riskinin bir kategorisi kalkıyor
-- npm tedarik zinciri yüzeyi sıfır
-- Depoyu okuyan jüri servis edilen dosyanın aynısını görüyor
+- No node stage in the Cloud Run image, which removes a whole category of deploy risk
+- Zero npm supply chain surface
+- A judge reading the repository sees the same file the browser runs
 
-Blueprint React diyordu; bu bilinçli bir sapma.
+The blueprint said React; this is a deliberate departure.
 
-## Dosyalar
+## Files
 
-| Dosya | İş |
+| File | Job |
 | --- | --- |
-| `index.html` | Tek kök. Inline script yok. |
-| `styles.css` | Kurgu odası paleti: koyu, düşük doygunluk, tek vurgu rengi. |
-| `src/store.js` | Tek durum kaynağı. Araçlar ve panel aynı store'u değiştiriyor. |
-| `src/api.js` | Sunucu çağrıları. Oturum çerezi HttpOnly, fetch otomatik gönderiyor. |
-| `src/player.js` | Sanal kırpma oynatıcısı. Çift tampon + rAF. |
-| `src/ui.js` | Render. `el()` yardımcısı sadece `textContent` kabul ediyor. |
-| `src/webmcp.js` | Beş WebMCP aracı. Kayıt, durum yansıması, fallback. |
-| `src/approve.js` | Render onay penceresi. Closed shadow root. |
-| `src/main.js` | Bağlama + `ready` promise'i. |
-| `test_web.mjs` | Store, WebMCP ve enjeksiyon testleri. |
-| `test_approve.mjs` | Onay penceresi testleri, sahte DOM ile. |
+| `index.html` | One root. No inline script. |
+| `styles.css` | Edit-room palette: dark, low saturation, one accent colour. |
+| `src/i18n.js` | Interface strings. English default and fallback, Turkish available. |
+| `src/store.js` | Single source of truth. Tools and panel change the same store. |
+| `src/api.js` | Server calls. The session cookie is HttpOnly; fetch sends it. |
+| `src/player.js` | Virtual-splice player. Double buffered, rAF driven. |
+| `src/ui.js` | Rendering. The `el()` helper only accepts `textContent`. |
+| `src/webmcp.js` | The five WebMCP tools: registration, state reflection, fallback. |
+| `src/approve.js` | Render approval dialog. Closed shadow root. |
+| `src/main.js` | Wiring plus the `ready` promise. |
+| `test_web.mjs` | Store, WebMCP, injection and i18n tests. |
+| `test_approve.mjs` | Approval dialog tests against a fake DOM. |
 
-## Onay penceresi
+## The approval dialog
 
-Ürünün tek geri alınamaz adımının kapısı. Ajan `commit_render` çağırdığında pencere
-açılıyor ve **aracın promise'i insanın kararını bekliyor** — HITL kapısının somut hali.
-Pencere render'ı kimin istediğini de yazıyor.
+The gate on the product's single irreversible step. When the agent calls `commit_render`
+the dialog opens and **the tool's promise waits on the human's decision** — the HITL gate
+made literal. The dialog also states who asked for the render.
 
-Üç savunma, her birinin somut bir sebebi var:
+Three defences, each with a concrete reason:
 
-**Closed shadow root.** Sayfadaki başka bir script `host.shadowRoot` ile içeriye
-ulaşamıyor (closed'da `null` dönüyor), yani Approve düğmesini bulup programatik olarak
-basamıyor.
+**Closed shadow root.** Another script on the page cannot reach in through
+`host.shadowRoot` — closed returns `null` — so it cannot find the Approve button and
+press it programmatically.
 
-**Sadece `textContent`.** Geçen projede onay penceresini `innerHTML` ile kurmuştuk ve
-zehirli bir araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinler take
-kimlikleri, replik metni ve dosya adları — hepsi kontrol etmediğimiz veri.
+**`textContent` only.** On the previous project we built the approval dialog with
+`innerHTML` and a poisoned tool name could click its own Approve button. The strings here
+are take ids, dialogue and filenames: data we do not control.
 
-**Host stilleri inline ve `!important`.** Sayfa CSS'i pencereyi görünmez yapıp
-kullanıcıya farkında olmadan onaylatamasın.
+**Host styles inline and `!important`.** So page CSS cannot hide the dialog and get
+something approved unseen.
 
-İki küçük ama önemli detay: varsayılan odak **Vazgeç**'te, yanlışlıkla Enter'a basmak
-render başlatmasın. Ve zaman aşımı (5 dk) **red** yönünde çözülüyor — ajan çağırıp insan
-masadan kalkarsa aracın promise'i sonsuza beklemesin, ama sessizce onaylanmasın da.
+Two small details that matter more than they look: focus defaults to **Cancel**, so a
+stray Enter does not start a render. And the five minute timeout resolves as **declined**
+— an agent whose human walked away neither waits forever nor gets a silent yes.
 
-## WebMCP araçları
+## The WebMCP tools
 
-Klasik ajan kurgusunda ajan backend'e "şu aralıkları kes, render et" der ve MP4 geri
-döner. Yanlış take seçtiyse bunu render bittikten sonra anlarsın; backend kapalı bir
-kutudur. Burada araçlar sayfada çalışıyor, yani öneri kurgucunun ekranında, gerçek
-medyanın üstünde, her fragmentin kaynağı görünür halde beliriyor. Karar render'dan
-**önce** veriliyor.
+In the usual arrangement an agent tells a backend "cut these ranges, render it" and an
+MP4 comes back. If it picked the wrong take you find out after the render finishes,
+because the backend is a closed box. Here the tools run in the page, so the proposal
+appears on the editor's screen, over the real footage, with the source of every fragment
+visible. The decision happens **before** the render.
 
-| Araç | İş | Kredi |
+| Tool | Job | Credits |
 | --- | --- | --- |
-| `find_line` | Repliği ara, sıralı aday döndür. Sonuçlar ekranda da görünüyor. | 0 |
-| `propose_cut` | Öneriyi timeline'a koy. Render yok, insan değiştirebilir. | 0 |
-| `preview_segment` | Adayı ya da tüm öneriyi çal. | 0 |
-| `get_timeline_state` | Timeline'ı oku — **insanın yaptığı değişiklikler dahil**. | 0 |
-| `commit_render` | Onaydan sonra dosya üret. | 1 |
+| `find_line` | Search for a line, return ranked candidates. Results also show on screen. | 0 |
+| `propose_cut` | Put the proposal on the timeline. No render; the human can change it. | 0 |
+| `preview_segment` | Play a candidate, or the whole proposal. | 0 |
+| `get_timeline_state` | Read the timeline — **including what the human changed**. | 0 |
+| `commit_render` | Produce a file, after approval. | 1 |
 
-`get_timeline_state`'in açıklaması ajana insanın öneriyi değiştirmiş olabileceğini
-söylüyor ve `commit_render`'dan önce okumasını istiyor. HITL döngüsünü açık eden şey bu.
+`get_timeline_state`'s description tells the agent the human may have altered the
+proposal and asks it to read this before `commit_render`. That is what makes the HITL
+loop explicit rather than implied.
 
-### Doğrulanmış API yüzeyi
+### Verified API surface
 
-Geçen projede gerçek bir ChatGPT in-app browser koşusunda test edildi:
+Exercised in a real ChatGPT in-app browser run on the previous project:
 
 ```js
-document.modelContext.registerTool(tool, { signal })  // native yalnızca navigator'da olabilir
-document.modelContext.getTools()                      // execute içermez
-document.modelContext.executeTool(toolObject, input)  // isim DEĞİL, obje
+document.modelContext.registerTool(tool, { signal })  // native may live on navigator only
+document.modelContext.getTools()                      // without execute
+document.modelContext.executeTool(toolObject, input)  // the object, NOT a name
 ```
 
-Araç adı 1-128 karakter, `[A-Za-z0-9_.-]`. `execute` düz JSON objesi döndürüyor.
+Tool names are 1–128 characters of `[A-Za-z0-9_.-]`. `execute` returns a plain JSON
+object.
 
-**`updateTool` diye bir API yok.** Açıklamayı değiştirmek için kaydı `AbortController`
-ile iptal edip yeniden kaydetmek gerekiyor — `sync()` bunu yapıyor.
+**There is no `updateTool`.** Changing a description means aborting the registration with
+an `AbortController` and registering again, which is what `sync()` does.
 
-### Kredi bitince ajan çağırmadan öğreniyor
+### When credits run out the agent learns before it calls
 
-`commit_render`'ın açıklaması kredi durumunu taşıyor. Bakiye yetmezse açıklama
-`UNAVAILABLE RIGHT NOW` ile başlıyor ve aramanın hâlâ bedava olduğunu söylüyor. Ajan
-görev ortasında hata almak yerine önceden biliyor.
+`commit_render`'s description carries the credit state. If the balance is short the
+description leads with `UNAVAILABLE RIGHT NOW` and says search is still free. The agent
+finds out up front instead of failing mid-task.
 
-Bu yeniden kayıt **sadece oturum değişince** yapılıyor. Her durum değişiminde yapmak
-oynatma sırasında saniyede ~60 kez beş araç tanımı kurmak demekti; rAF döngüsü her
-karede `setPlayback` çağırıyor.
+That re-registration only happens **when the session changes**. Doing it on every state
+change meant building five tool definitions about sixty times a second during playback,
+because the rAF loop calls `setPlayback` on every frame.
 
-### Polyfill yüklemiyoruz
+### We do not install a polyfill
 
-WebMCP yoksa araçlar kaydedilmiyor ve arayüz paneli devrede kalıyor. Ajan desteğini
-taklit etmek, desteklemeyen tarayıcıda sessizce yanlış davranış üretir.
+With no WebMCP the tools are simply not registered and the interface panel stays in
+charge. Faking agent support would produce silently wrong behaviour in a browser that
+cannot do it.
 
-Kayıt reddedilirse sebebi konsola yazılıyor. En sık sebep `Origin-Agent-Cluster`
-header'ının eksik olması ve `SecurityError` — sunucu bu header'ı veriyor ve
-`server/test_api.py` onu test ediyor.
+If registration is refused the reason goes to the console. The most common cause is a
+missing `Origin-Agent-Cluster` header and a `SecurityError` — the server does send that
+header, and `server/test_api.py` asserts it.
 
-## Sanal kırpma nasıl çalışıyor
+## How virtual splicing works
 
-Ürünün "render etmeden gör" iddiası `player.js`'de gerçekleşiyor. Bir kaba kurguyu
-duymak için hiçbir şey encode edilmiyor; kaynak dosyalarda ileri geri atlanıyor.
+The product's "see it without rendering" claim happens in `player.js`. Hearing a rough cut
+encodes nothing; it seeks around the source files.
 
-İki karar bunu kullanılabilir kılıyor:
+Two decisions make it usable:
 
-**`timeupdate` değil, `requestAnimationFrame`.** `timeupdate` saniyede ~4 kez
-tetikleniyor, yani kesim noktasını 250 ms'e kadar kaçırabilir. Biz kelime sınırından
-kesiyoruz — 250 ms sonraki kelimeyi de duyurur. rAF ~16 ms veriyor.
+**`requestAnimationFrame`, not `timeupdate`.** `timeupdate` fires about four times a
+second, so it can overshoot a cut point by up to 250ms. We cut on word boundaries — 250ms
+means you also hear the next word. rAF gives roughly 16ms.
 
-**Çift tampon.** Tek element kullanıp her segmentte `src`/`currentTime` değiştirmek
-geçişlerde yükleme boşluğu bırakıyor. İki `<video>` dönüşümlü çalışıyor: biri çalarken
-diğeri sıradaki segmente konumlanıyor, geçiş anında sadece `play()` çağrılıyor.
+**Double buffering.** One element changing `src`/`currentTime` per segment leaves a
+loading gap at every join. Two `<video>` elements alternate: while one plays, the other is
+already positioned on the next segment, so the transition is just a `play()` call.
 
-Medya sunucusunun **HTTP range** desteklemesi şart. Doğrulandı: `/media/*` 206 ve
-`Content-Range` dönüyor. Olmasa her arama dosyanın tamamını indirirdi.
+The media server **must** support HTTP range. Verified: `/media/*` returns 206 with
+`Content-Range`. Without it every seek would download the whole file.
 
-## Provenance şeridi
+## The provenance strip
 
-Timeline'daki her parçanın altında hangi take, hangi sahne, hangi kamera, hangi
-konuşmacı, hangi ton ve hangi milisaniye aralığı yazıyor. "kaynağı aç" bağlantısı
-medya fragment'i (`#t=start,end`) ile tam o aralığı açıyor.
+Under every segment on the timeline: which take, which scene, which camera, which
+speaker, which delivery and which millisecond range. The "open source" link opens exactly
+that range through a media fragment (`#t=start,end`).
 
-Bu şerit kurgucu faydasından fazlası: ürünün **"söylemediğini söylettim" değil,
-"söylediklerini kaynağıyla bir araya getirdim"** olmasını sağlayan şey. Birincisi
-deepfake aracı, ikincisi gazetecilik. Aradaki fark bu şerit.
+That strip is more than an editor convenience: it is what makes the product **"I
+assembled what they said, with sources"** rather than "I made them say something". The
+first is a deepfake tool, the second is journalism. The difference is this strip.
 
-## HTML enjeksiyon disiplini
+## HTML injection discipline
 
-Hiçbir yerde `innerHTML` yok. `el()` yardımcısı bilerek sadece `textContent` kabul
-ediyor.
+There is no `innerHTML` anywhere. The `el()` helper deliberately only accepts
+`textContent`.
 
-Sebep somut: geçen projede onay penceresini `innerHTML` ile kurmuştuk ve zehirli bir
-araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinlerin kaynağı Whisper
-çıktısı ve kullanıcı dosya adları — yani kontrol etmediğimiz veri.
+The reason is concrete: on the previous project we built the approval dialog with
+`innerHTML` and a poisoned tool name could press its own Approve button. The text here
+comes from Whisper output and user filenames — data we do not control.
 
-`test_web.mjs` bunu her koşuda kontrol ediyor ve kontrolün kendisini de test ediyor
-(gerçek kullanımı yakalıyor mu, yorumlarda yanlış pozitif üretiyor mu).
+`test_web.mjs` checks this on every run, and also tests the check itself: does it catch
+real usage, and does it produce false positives on comments. The first version did, on the
+comment explaining why `innerHTML` is avoided.
 
-## Test
+## Interface language
+
+English is the default and the fallback, Turkish is a choice, and the locale comes from
+`localStorage` or `navigator.language`. Anything the **agent** reads — tool descriptions,
+the assistant's instruction — is English only and does not go through the catalogue: a
+model should not get a different contract depending on who is looking at the screen.
+
+All text is written in `render()` rather than at construction, which is what made this
+cheap. Labels and dynamic values share one code path, so switching language needs no
+second mechanism and static labels cannot drift out of sync.
+
+`missingKeys` and `strayKeys` compare each locale against English and the tests assert
+both are empty. A missing key is not fatal, since `t()` falls back, but it means a Turkish
+reader sees one stray English label — exactly the sort of thing nobody notices until a
+judge does.
+
+## Tests
 
 ```powershell
 node web\test_web.mjs
 node web\test_approve.mjs
 ```
 
-`test_approve.mjs` 28 test, minimal bir sahte DOM ile: shadow root'un `closed`
-açılması, host stillerinin zorlanması, `role=dialog`/`aria-modal`, provenance metninin
-görünmesi, varsayılan odağın Vazgeç'te olması, Escape'in reddetmesi, zaman aşımının
-**red** yönünde çözülmesi, ajan isteğinin ayrıca işaretlenmesi, dinleyicilerin
-bırakılmaması ve çift karara karşı korunma.
+`test_approve.mjs`, 35 tests against a small hand-written fake DOM: the shadow root
+opening `closed`, host styles being forced, `role=dialog` and `aria-modal`, the provenance
+text appearing, focus defaulting to Cancel, Escape declining, the timeout resolving as
+**declined**, an agent request being marked as such, listeners not being left behind,
+protection against a double decision, and the dialog rendering in Turkish while take ids
+and timecodes stay untranslated.
 
-`test_web.mjs` 67 test. Enjeksiyon disiplini, `el()` sözleşmesi, dış bağlantı `noopener`'ı, store
-timeline işlemleri, `getState`'in kopya döndürmesi, abonelik yaşam döngüsü ve bir
-abonenin hatasının diğerlerini düşürmemesi.
+Those tests were reading the machine's locale through Node's `navigator.language`, so on a
+Turkish Windows they asserted against Turkish text and failed. They now pin the locale,
+which is the same hermeticity lesson the API tests learned from the demo seed.
 
-WebMCP tarafı sahte bir `modelContext` ile test ediliyor: beş aracın kaydı, isim
-deseni, şemalar, `readOnlyHint` işaretleri, `execute` yolları, bilinmeyen aday
-kimliğinde ajana yol gösteren hata, `get_timeline_state`'in insanın çıkardığı parçayı
-yansıtması, kredi bitince açıklamanın değişmesi, yeniden kayıtta çoğalma olmaması ve
-WebMCP olmayan tarayıcıda sessizce fallback'e düşmesi.
+`test_web.mjs`, 89 tests: injection discipline, the `el()` contract, `noopener` on external
+links, store timeline operations, `getState` returning a copy, subscription lifecycle, one
+subscriber's failure not taking down the others, and the i18n catalogue contract.
 
-Bu testler iki gerçek hatayı yakaladı: `sync()` uçuştaki bir senkronizasyonu
-beklemeden dönüyordu (yani `await sync()` oturmuş duruma bakmayı garanti etmiyordu),
-ve abone her durum değişiminde yeniden kayıt tetikliyordu.
+The WebMCP side is tested against a fake `modelContext`: registration of the five tools,
+name pattern, schemas, `readOnlyHint` flags, every `execute` path, the unknown-candidate
+error telling the agent where ids come from, `get_timeline_state` reflecting a segment the
+human removed, the description changing when credits run out, no duplicates after
+re-registration, and graceful fallback in a browser with no WebMCP.
 
-## Tarayıcıda elle doğrulanması gerekenler
+Those tests caught two real bugs: `sync()` returned without waiting for an in-flight
+sync, so `await sync()` did not guarantee a settled registry, and the subscriber triggered
+re-registration on every state change.
 
-`jsdom` medya oynatmayı uygulamıyor — `currentTime` ilerlemiyor, `play()` çalışmıyor.
-Yani şunlar otomatik test edilemiyor ve elle bakılmalı:
+## What has to be verified by hand in a browser
 
-1. Öneriyi oynat: parçalar sırayla çalıyor mu, geçişte boşluk veya tık var mı
-2. Kesim noktaları: kelimenin ortasından kesiliyor mu
-3. Aktif parça timeline'da vurgulanıyor mu, sayaç ilerliyor mu
-4. "kaynağı aç" doğru aralığı açıyor mu
-5. Önizle tek parçayı çalıp duruyor mu
-6. Onay penceresi gerçek shadow DOM'da beklendiği gibi görünüyor ve okunuyor mu
-7. Render sonrası indirme bağlantısı çalışıyor mu
+`jsdom` does not implement media playback — `currentTime` does not advance and `play()`
+does nothing. So these cannot be tested automatically and need a look:
+
+1. Play the proposal: do the segments run in order, is there a gap or a click at the joins
+2. Cut points: does it slice through the middle of a word
+3. Is the active segment highlighted on the timeline, does the counter advance
+4. Does "open source" open the right range
+5. Does Preview play one segment and stop
+6. Does the approval dialog look and read as expected in a real shadow DOM
+7. Does the download link work after a render

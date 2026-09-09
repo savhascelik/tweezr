@@ -1,43 +1,43 @@
-# pipeline — retrieval omurgası
+# pipeline — the retrieval backbone
 
-Kütüphaneyi aranabilir hale getiren katman. UI yok, ajan yok.
+The layer that makes a library searchable. No UI, no agent.
 
 ```
-medya ──▶ transcribe.py ──▶ tone.py ──▶ ingest.py ──▶ ClickHouse
-          (kelime+ms)       (Gemini)                       │
-                                                    search.py ◀── ajan buradan sorar
+media ──▶ transcribe.py ──▶ tone.py ──▶ ingest.py ──▶ ClickHouse
+          (words + ms)      (Gemini)                       │
+                                                    search.py ◀── the agent asks here
 ```
 
-## İş bölümü
+## Division of labour
 
-| İş | Araç | Neden |
+| Job | Tool | Why |
 | --- | --- | --- |
-| Kelime + zaman kodu | `faster-whisper`, CPU | Hizalama problemi. Metni ve sesi biliyorsun, eşleşmeyi arıyorsun. |
-| Ton | Gemini multimodal | Prozodi + anlam problemi. Whisper'ın yapamadığı tek iş. |
-| Arama | ClickHouse | Kelime bazlı retrieval. Metrik kovası değil, motorun kendisi. |
+| Words and timing | `faster-whisper`, CPU | An alignment problem. You have the audio and the words; you are looking for the correspondence. |
+| Delivery | Gemini multimodal | A prosody and meaning problem. The one thing alignment cannot answer. |
+| Search | ClickHouse | Word-level retrieval. Not a metrics bucket, the engine itself. |
 
-## Dosyalar
+## Files
 
-| Dosya | İş |
+| File | Job |
 | --- | --- |
-| `__init__.py` | Paket. `server/` ile şema ve SQL'i paylaşıyor. |
-| `schema.py` | Veri kontratı. Normalizasyon, düzleştirme, doğrulama, hizalama raporu. Tek doğruluk kaynağı. |
-| `fixture.json` | Elle yazılmış kontrat örneği. Pipeline bu şekli üretmek zorunda. |
-| `transcribe.py` | Medya → kelime + ms zaman kodu. |
-| `tone.py` | Take başına 1 Gemini çağrısı → satır başına ton. |
-| `queries.py` | SQL'in tamamı. Başka yerde string kurulmuyor. |
-| `db.py` | ClickHouse bağlantısı, ortam değişkenlerinden. |
-| `ingest.py` | Doküman → `words` tablosu. |
-| `search.py` | Replik arama. `find_line` aracının arkası. |
-| `test_queries.py` | Sorgu doğruluk testleri. |
-| `verify_cut.py` | Kesim doğrulaması + yerel referans uygulama. |
-| `schema.sql` | `words` tablosu. Kolon sırası `schema.py` ile aynı. |
-| `make_test_audio.ps1` | Windows SAPI ile bilinen metinli test sesi. |
+| `__init__.py` | Package, because `server/` shares the schema and the SQL. |
+| `schema.py` | The data contract. Normalisation, flattening, validation, alignment report. Single source of truth. |
+| `fixture.json` | Hand-written example of the contract. The pipeline has to produce this shape. |
+| `transcribe.py` | Media → words with millisecond timing. |
+| `tone.py` | One Gemini call per take → a delivery label per line. |
+| `queries.py` | All of the SQL. No query strings are built anywhere else. |
+| `db.py` | ClickHouse connection, from the environment. |
+| `ingest.py` | Document → the `words` table. |
+| `search.py` | Line search. What sits behind the `find_line` tool. |
+| `test_queries.py` | Query correctness tests. |
+| `verify_cut.py` | Cut verification plus the local reference implementation. |
+| `schema.sql` | The `words` table. Column order matches `schema.py`. |
+| `make_test_audio.ps1` | Known-text test audio via Windows SAPI. |
 
-## Kurulum
+## Setup
 
-Kurulum ve tüm komutlar **`app/` kökünden** çalışıyor. `pipeline` bir paket, çünkü
-`server/` de aynı şemayı ve SQL'i kullanıyor — iki yerde kopyalanmasın.
+Setup and every command run **from the `app/` root**. `pipeline` is a package because
+`server/` uses the same schema and the same SQL, and neither should exist twice.
 
 ```powershell
 python -m venv .venv
@@ -45,81 +45,82 @@ python -m venv .venv
 docker compose -f dev\docker-compose.yml up -d
 ```
 
-Sistem `ffmpeg`'ine gerek yok.
+No system `ffmpeg` needed.
 
-## Uçtan uca
+## End to end
 
 ```powershell
 $py = ".venv\Scripts\python.exe"
 
-# 0. Test sesi (kendi çekimin yoksa)
+# 0. Test audio, if you have no footage of your own yet
 powershell -ExecutionPolicy Bypass -File pipeline\make_test_audio.ps1
 Move-Item sample.wav scratch\
 
-# 1. Kelime bazlı zaman kodu
+# 1. Word-level timing
 & $py -m pipeline.transcribe scratch\sample.wav --take-id T01 --scene S01 --camera A `
     --speaker MAYA --out scratch\T01.json
 
-# 2. Ton  (anahtar yoksa --dry-run, hepsi neutral olur)
+# 2. Delivery  (without a key use --dry-run; everything becomes neutral)
 & $py -m pipeline.tone scratch\T01.json --media scratch\sample.wav
 
-# 3. ClickHouse'a yaz
+# 3. Write to ClickHouse
 & $py -m pipeline.ingest scratch\T01.json --replace
 
-# 4. Ara
+# 4. Search
 & $py -m pipeline.search --phrase "I never asked for this"
 & $py -m pipeline.search --phrase "I never asked for this" --tone calm
 & $py -m pipeline.search --word asked
 & $py -m pipeline.search --stats
 ```
 
-## Doğrulama
+## Verification
 
 ```powershell
-& $py -m pipeline.test_queries                    # SQL doğruluk testleri (12)
-& $py -m doctest pipeline\schema.py               # normalizasyon
+& $py -m pipeline.test_queries                    # SQL correctness (12)
+& $py -m doctest pipeline\schema.py               # normalisation
 & $py -m pipeline.search --phrase "..." --compare scratch\T01.json
 ```
 
-`--compare` en önemlisi: SQL ile yerel referans uygulamanın (`verify_cut.find_phrase`)
-aynı cevabı verdiğini doğruluyor. İkisi ayrışırsa sessizce yanlış sonuç dönmeye başlar.
+`--compare` is the important one: it asserts the SQL and the local reference
+implementation (`verify_cut.find_phrase`) return the same answer. If those two ever
+diverge, the product starts returning the wrong takes without telling anyone.
 
-## Kesimi kulakla doğrula
+## Verify the cut by ear
 
-Sayısal rapor hizalamanın makul olduğunu söyler, kalitesine kulak karar verir.
+The numbers say the alignment is plausible. Only listening says it is good.
 
 ```powershell
-# Cümlenin geçtiği yerleri kesip birleştir
+# Cut every occurrence of a phrase and splice them together
 & $py -m pipeline.verify_cut scratch\T01.json --phrase "I never asked for this" `
     --media scratch\sample.wav --splice --out scratch\spliced.wav
 
-# EN ZOR TEST: kelimeleri farklı yerlerden toplayıp yeni cümle kur
+# THE HARD TEST: build a new sentence from words taken from different places
 & $py -m pipeline.verify_cut scratch\T01.json --phrase "I asked for quiet on set" `
     --media scratch\sample.wav --assemble --out scratch\assembled.wav
 ```
 
-Kelime kırpılmış geliyorsa ilk çevireceğin düğme `--pad-ms 40`.
+If words sound clipped, the first knob to turn is `--pad-ms 40`.
 
-## Ölçülen değerler
+## Measured
 
 Windows, CPU, `base.en`, int8:
 
 | | |
 | --- | --- |
-| 9.03 sn ses → transkripsiyon | 1.09 sn (realtime factor **0.12**) |
-| Model yükleme | 16.6 sn, tek seferlik (sonra önbellekte) |
-| Sıfır süreli kelime / çakışma | 0 / 0 |
-| Kelime süresi p50 / p95 | 240 / 340 ms |
-| Kesim hassasiyeti | Örnek hassasiyetinde (ölçüldü: 6 kelime = 1660 ms, toplamla birebir) |
+| 9.03s of audio → transcription | 1.09s (realtime factor **0.12**) |
+| Model load | 16.6s, once, then cached |
+| Zero-length words / overlaps | 0 / 0 |
+| Word duration p50 / p95 | 240 / 340 ms |
+| Cut accuracy | Sample accurate (measured: 6 words = 1660 ms, exactly the sum) |
 
-## SAPI testinin ölçmediği
+## What the SAPI test does not measure
 
-TTS sesi gerçek konuşmadan temiz: sabit tempo, net kelime araları, gürültü yok.
-Ton da düz, o yüzden `tone.py`'ı anlamlı test etmiyor.
+Synthesised speech is cleaner than real speech: even pace, clear gaps between words, no
+room noise. Its delivery is also flat, so it does not meaningfully exercise `tone.py`.
 
-Gerçek materyalde iki şeyi ölçmen gerekiyor:
+Two things have to be measured on real material:
 
-1. **Hizalama** — kesimi dinle, kelime ortasından kesiyor mu
-2. **Ton etiketleri** — Gemini'nin "calm" dediği take gerçekten sakin mi
+1. **Alignment** — listen to a cut and hear whether it slices through a word
+2. **Delivery labels** — is the take Gemini called "calm" actually calm
 
-İkisi de ürünün temel iddiası. Doğrulanmadan ilerlemeye değmez.
+Both are core claims of the product. Neither is worth building past unverified.

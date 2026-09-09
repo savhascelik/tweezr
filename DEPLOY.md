@@ -1,23 +1,26 @@
-# Dağıtım — Cloud Run
+# Deploying to Cloud Run
 
-Konteyner yerelde uçtan uca doğrulandı: sayfa, arama, medya range istekleri ve render
-(FFmpeg dahil) slim imajda çalışıyor. Kalan iş hesap açmak ve deploy etmek.
+The container is verified end to end locally: page, search, media range requests and the
+render including FFmpeg all work on the slim image. What is left is opening accounts and
+deploying.
 
-## Önce bilmen gereken iki sınır
+## Two limits to know first
 
-**`--max-instances=1` şart.** Render işleri bellekte tutuluyor ve oturum defteri
-`/tmp`'teki SQLite'ta. İki örnek çalışırsa bir örnekte başlatılan render'ın durumu
-diğerinde 404 döner. Bu bilinçli bir sadelik kararı; bu ölçekte kalıcı kuyruk kurmak
-gereksiz karmaşıklık. Trafik beklenmiyorsa tek örnek fazlasıyla yeter.
+**`--max-instances=1` is required.** Render jobs are held in memory and the session ledger
+is SQLite in `/tmp`. With two instances running, the status of a render started on one
+returns 404 on the other. This is a deliberate simplicity decision; a durable queue would
+be unnecessary complexity at this scale. With no traffic expected, one instance is more
+than enough.
 
-**`--allow-unauthenticated` gerekiyor** ve bu kasıtlı. Zorunlu giriş WebMCP keşfini
-öldürüyor: araçlar sayfa JS'i tarafından kaydediliyor, jüri login duvarı görürse ajan
-sıfır araç görür. Karşılığındaki frenler `server/README.md`'de listeli — oturum başına
-kredi, IP başına oturum limiti, proje allowlist'i, parametreli sorgular.
+**`--allow-unauthenticated` is necessary** and intentional. A mandatory login kills WebMCP
+discovery: tools are registered by page JS, so a judge hitting a login wall gives the
+agent zero tools. The brakes that pay for this are listed in `server/README.md` — per
+session credits, a per-IP session cap, a project allowlist, parameterised queries.
 
 ## 1. ClickHouse Cloud
 
-Servis oluştur, bağlantı bilgilerini al, sonra yerelden tabloyu kurup korpusu yükle:
+Create a service, take the connection details, then create the table and load the corpus
+from your machine:
 
 ```powershell
 $env:CLICKHOUSE_HOST     = "xxx.clickhouse.cloud"
@@ -30,22 +33,23 @@ $env:CLICKHOUSE_DATABASE = "cinema"
 .venv\Scripts\python.exe -m dev.load_demo
 ```
 
-`load_demo` tabloyu kuruyor, `demo/takes/*.json`'ı yazıyor ve aramayı doğruluyor.
-Whisper çalıştırmıyor, GPU istemiyor.
+`load_demo` creates the table, writes `demo/takes/*.json` and verifies search. It runs no
+Whisper and needs no GPU.
 
-Kendi çekimini eklediysen önce korpusu üret (bu ağır olan, geliştirici makinesinde):
+If you are adding your own footage, build the corpus first — that is the heavy part and it
+belongs on a developer machine:
 
 ```powershell
-.venv\Scripts\python.exe -m pipeline.transcribe <dosya> --take-id T09 ... --out demo\takes\T09.json
+.venv\Scripts\python.exe -m pipeline.transcribe <file> --take-id T09 ... --out demo\takes\T09.json
 .venv\Scripts\python.exe -m pipeline.tone demo\takes\T09.json --media demo\media\T09.wav
-Copy-Item <dosya> demo\media\
+Copy-Item <file> demo\media\
 .venv\Scripts\python.exe -m dev.load_demo
 ```
 
 ## 2. Cloud Run
 
 ```powershell
-$PROJECT = "<gcp-proje-id>"
+$PROJECT = "<gcp-project-id>"
 $REGION  = "europe-west1"
 $SERVICE = "cinema"
 
@@ -64,59 +68,58 @@ gcloud run deploy $SERVICE `
   --set-secrets="CLICKHOUSE_PASSWORD=clickhouse-password:latest,GEMINI_API_KEY=gemini-key:latest"
 ```
 
-Notlar:
+Notes:
 
-- **`--min-instances=1`**: jüri ilk açtığında cold start beklemesin. Boşta duran örnek
-  para yakıyor, teslimden sonra `0`'a çek.
-- **`--cpu=2`**: FFmpeg concat CPU işi. 1 CPU'da da çalışır, sadece yavaşlar.
-- **Şifreler `--set-env-vars` ile DEĞİL `--set-secrets` ile.** Ortam değişkeni olarak
-  verilen sır `gcloud run services describe` çıktısında ve konsol arayüzünde düz metin
-  görünüyor. Secret Manager'a koy:
+- **`--min-instances=1`** so a judge does not wait on a cold start. An idle instance costs
+  money; drop it to `0` once judging is over.
+- **`--cpu=2`** because the FFmpeg concat is CPU work. One CPU works, just slower.
+- **Secrets go through `--set-secrets`, not `--set-env-vars`.** A secret passed as an
+  environment variable shows up in plain text in `gcloud run services describe` and in the
+  console. Put them in Secret Manager:
 
 ```powershell
 "..." | gcloud secrets create clickhouse-password --data-file=-
 "..." | gcloud secrets create gemini-key --data-file=-
 ```
 
-- **`GEMINI_API_KEY` opsiyonel.** Vermezsen sayfa içi asistan kapanıyor ve sebebini
-  arayüzde yazıyor; arama, timeline, önizleme, provenance ve WebMCP araçları çalışmaya
-  devam ediyor.
+- **`GEMINI_API_KEY` is optional.** Without it the in-page assistant closes and states why
+  in the interface; search, timeline, preview, provenance and the WebMCP tools all keep
+  working.
 
-## 3. Doğrula
+## 3. Verify
 
 ```powershell
-.venv\Scripts\python.exe -m dev.check_deploy https://<servis-url>
+.venv\Scripts\python.exe -m dev.check_deploy https://<service-url>
 ```
 
-25 kontrol: WebMCP ön koşulları (https, `Origin-Agent-Cluster: ?1`, araçları kıracak
-CSP yok), varlıklar, oturumun giriş istemeden kurulması, kütüphane ve arama, medyanın
-HTTP range desteği, ve gerçek bir render.
+25 checks: the WebMCP preconditions (https, `Origin-Agent-Cluster: ?1`, no CSP that would
+break the tools), assets, a session established without a login, library and search, media
+HTTP range support, and a real render.
 
-### Buradan sonrası elle — ve en önemlisi bu
+### From here it is manual, and this is the part that matters
 
-Script `registerTool`'un başarılı olduğunu **doğrulayamaz**; o bir tarayıcı işi.
+The script **cannot** verify that `registerTool` succeeded; that is a browser job.
 
-1. URL'yi ChatGPT in-app browser'da ya da WebMCP açık Chrome'da aç
-2. Ajana araçlarını sor. Beş araç görünmeli: `find_line`, `propose_cut`,
+1. Open the URL in ChatGPT's in-app browser, or in Chrome with WebMCP enabled
+2. Ask the agent what tools it has. Five should appear: `find_line`, `propose_cut`,
    `preview_segment`, `get_timeline_state`, `commit_render`
-3. "I never asked for this repliğinin en sakin okunduğu take'i bul" de
-4. Timeline'da öneri çıkmalı, her parçanın altında provenance şeridi olmalı
-5. Render istettir: onay penceresi açılmalı ve ajan pencerede beklemeli
+3. Ask it to find the calmest reading of "I never asked for this"
+4. A proposal should appear on the timeline, with a provenance strip under every segment
+5. Ask it to render: the approval dialog should open and the agent should wait on it
 
-Araçlar görünmüyorsa ilk bakılacak yer **tarayıcı konsolu**. `registerTool`
-reddedildiyse sebebi orada yazıyor; en sık sebep `Origin-Agent-Cluster` eksikliği ve
-`SecurityError` — ama sunucu o header'ı veriyor ve `check_deploy` bunu kontrol ediyor,
-yani başka bir şeyse konsol söyleyecek.
+If the tools do not appear, look at the **browser console** first. If `registerTool` was
+refused the reason is printed there; the most common cause is a missing
+`Origin-Agent-Cluster` header and a `SecurityError` — but the server does send that header
+and `check_deploy` asserts it, so if it is something else the console will say so.
 
-## 4. Bütçe freni
+## 4. The budget brake
 
-Blueprint'te söz verilen global bütçe freni **henüz yok**. Şu an var olanlar: oturum
-başına kredi, IP başına oturum limiti, sohbet mesajı sayacı, `MAX_OUTPUT_MS`,
-`MAX_UPLOAD_*` ve tek örnek sınırı.
+The global budget brake promised in the blueprint **does not exist yet**. What exists: per
+session credits, a per-IP session cap, the assistant message counter, `MAX_OUTPUT_MS`,
+`MAX_UPLOAD_*` and the single instance limit.
 
-Bunlar kötüye kullanımı sınırlıyor ama Google Cloud faturasını sınırlamıyor. Teslimden
-önce yapılması gereken:
+Those limit abuse, not the Google Cloud bill. Before deploying:
 
-- GCP'de **bütçe uyarısı** kur (Billing → Budgets & alerts)
-- Teslim ve değerlendirme bitince `--min-instances=0`
-- Hackathon bittiğinde servisi sil: `gcloud run services delete $SERVICE`
+- Set a **budget alert** in GCP (Billing → Budgets & alerts)
+- Once submission and judging are done, `--min-instances=0`
+- When the hackathon ends, delete the service: `gcloud run services delete $SERVICE`
