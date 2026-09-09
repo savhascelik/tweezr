@@ -31,12 +31,20 @@ const actions = {
     store.setStatus("busy", t("status.searching"));
     try {
       const result = await api.findLine({ phrase: trimmed, tone });
+      // A pick from the previous search points at a line that may no longer be shown.
+      store.clearSelection();
       store.patch({ candidates: result.candidates, session: result.session });
       store.setStatus(
         result.total ? "ok" : "warn",
         result.total
           ? t("status.found", { count: result.total })
           : t("status.notFound", { phrase: result.phrase })
+      );
+
+      // The transcript is only clickable once the words are in. A failure here degrades
+      // to the plain matched phrase rather than taking the search down with it.
+      loadLines(result.candidates).catch((error) =>
+        console.warn("could not load line words", error)
       );
       return result;
     } catch (error) {
@@ -51,6 +59,53 @@ const actions = {
       "ok",
       t("status.added", { take: candidate.take_id, count: timeline.length })
     );
+    return timeline;
+  },
+
+  /**
+   * Picks a word, and plays exactly that word.
+   *
+   * Hearing the thing you just clicked is the point: the millisecond boundaries are the
+   * product's claim, and the fastest way to believe a claim about audio is to hear it.
+   */
+  selectWord(candidate, index, { extend = false } = {}) {
+    const key = store.lineKey(candidate);
+    const selection = store.selectWord(key, index, { extend });
+    if (!selection) {
+      store.setStatus("idle", "");
+      player.stop();
+      return null;
+    }
+
+    const segment = store.selectionSegment();
+    if (!segment) return selection;
+
+    store.setStatus(
+      "ok",
+      t("status.picked", {
+        words: segment.words,
+        text: segment.text,
+        duration: seconds(segment.duration_ms),
+      })
+    );
+    player.preview(segment);
+    return selection;
+  },
+
+  /** Adds the picked words rather than the whole match. The namesake operation. */
+  addSelection() {
+    const segment = store.selectionSegment();
+    if (!segment) return null;
+    const timeline = store.appendToTimeline(segment);
+    store.setStatus(
+      "ok",
+      t("status.tweezed", {
+        text: segment.text,
+        take: segment.take_id,
+        count: timeline.length,
+      })
+    );
+    store.clearSelection();
     return timeline;
   },
 
@@ -230,9 +285,38 @@ const actions = {
   },
 };
 
+/**
+ * Fetches the words of every line the candidates sit in.
+ *
+ * Separate from the search rather than folded into `find_line`, for two reasons. The
+ * agent's tool result does not need the transcript and would only be padded by it. And
+ * this can fail without costing the search: the interface falls back to the matched
+ * phrase, which is what it showed before word tweezing existed.
+ */
+async function loadLines(candidates) {
+  if (!candidates?.length) return {};
+  const seen = new Set();
+  const refs = [];
+  for (const candidate of candidates) {
+    const key = store.lineKey(candidate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    refs.push({ take_id: candidate.take_id, line_id: candidate.line_id });
+  }
+  const result = await api.readLines(refs);
+  return store.setLines(
+    Object.fromEntries(
+      Object.entries(result.lines).map(([key, line]) => [key, line.words])
+    )
+  );
+}
+
 const ui = createUI(root, {
   onSearch: (query) => actions.search(query).catch(() => {}),
   onAdd: actions.add,
+  onSelectWord: actions.selectWord,
+  onAddSelection: actions.addSelection,
+  onClearSelection: () => store.clearSelection(),
   onPreview: actions.preview,
   onRemove: actions.remove,
   onReorder: actions.reorder,

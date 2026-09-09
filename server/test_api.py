@@ -256,6 +256,66 @@ def main() -> int:
             stats = client.get(f"/api/library/stats?project={API_TEST_PROJECT}")
             check("library stats", stats.json()["stats"]["takes"], 3)
 
+    print("\n=== line words (the clickable transcript) ===")
+    if clickhouse is None:
+        print("  SKIPPED    no ClickHouse")
+    else:
+        with TestClient(app) as client:
+            def lines(refs, project=API_TEST_PROJECT):
+                return client.post("/api/lines", json={"lines": refs, "project": project})
+
+            answer = lines([{"take_id": "S01_T01", "line_id": 1}])
+            check("lines 200", answer.status_code, 200)
+            line = answer.json()["lines"]["S01_T01:1"]
+            check("five words", len(line["words"]), 5)
+            check(
+                "in spoken order",
+                [word["word"] for word in line["words"]],
+                ["I", "never", "asked", "for", "this"],
+            )
+            # The full sentence, which a phrase match does NOT give you
+            check("the sentence is joined", line["text"], "I never asked for this")
+            check("bounds are the first and last word", [line["start_ms"], line["end_ms"]], [1200, 2620])
+            check("each word carries its own range", line["words"][1]["start_ms"], 1330)
+            check("and its own confidence", line["words"][1]["confidence"], 0.98)
+            check("normalised form travels too", line["words"][0]["word_norm"], "i")
+
+            # Several candidates can be hits inside one line, so duplicates collapse
+            both = lines(
+                [
+                    {"take_id": "S01_T01", "line_id": 1},
+                    {"take_id": "S01_T01", "line_id": 1},
+                    {"take_id": "S01_T01", "line_id": 2},
+                ]
+            ).json()["lines"]
+            check("duplicates collapse", sorted(both), ["S01_T01:1", "S01_T01:2"])
+            check("the second line came too", both["S01_T01:2"]["text"], "Just let me go")
+
+            # Reading the transcript you are already looking at must not cost anything
+            before = client.get("/api/session").json()["session"]["credits"]
+            lines([{"take_id": "S01_T03", "line_id": 1}])
+            check(
+                "reading a line costs nothing",
+                client.get("/api/session").json()["session"]["credits"],
+                before,
+            )
+
+            # A line that does not exist is absent from the map rather than an error: the
+            # interface asks for whatever a search returned and degrades on its own.
+            check("unknown line is simply absent", lines([{"take_id": "NOPE", "line_id": 9}]).json()["lines"], {})
+
+            check("empty list rejected", lines([]).status_code, 422)
+            check(
+                "over the cap rejected",
+                lines([{"take_id": "S01_T01", "line_id": 1}] * 101).status_code,
+                422,
+            )
+            check(
+                "project stays inside the allowlist",
+                lines([{"take_id": "S01_T01", "line_id": 1}], project="../etc").status_code,
+                404,
+            )
+
     print("\n=== render ===")
     if clickhouse is None:
         print("  SKIPPED    no ClickHouse")

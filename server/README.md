@@ -61,6 +61,7 @@ allowance.
 | `GET /healthz` | health | - |
 | `GET /api/session` | session, balance, price list (creates one if absent) | 0 |
 | `POST /api/find_line` | phrase → ranked candidates | 0 |
+| `POST /api/lines` | the words of given lines, with timings (clickable transcript) | 0 |
 | `GET /api/word/{word}` | every occurrence of a word (single-word assembly) | 0 |
 | `GET /api/library/stats` | what the library holds | 0 |
 | `POST /api/render` | queue an approved cut | 1 |
@@ -73,6 +74,13 @@ allowance.
 `find_line` **needs no LLM**: phrase in, ClickHouse out, ranked. The ADK agent that turns
 natural language into these parameters sits on top of it. Which means search works
 fully with no Gemini key.
+
+`POST /api/lines` is what makes the transcript clickable. `find_line` returns the matched
+range; this returns the sentence around it, so a single word can be previewed and a range
+picked by hand. It is batched over `(take_id, line_id)` pairs rather than one request per
+line, because a search returns up to fifty candidates and fifty round trips to answer one
+question is the wrong shape. Reading the transcript you are already looking at costs
+nothing, and a test asserts the balance does not move.
 
 Ranking is product logic and lives in `routes.py` rather than the SQL: the highest
 delivery confidence first. Given a tone filter, that reads directly as "the best example
@@ -190,13 +198,14 @@ docker compose -f dev\docker-compose.yml up -d
 .venv\Scripts\python.exe -m server.test_api
 ```
 
-101 tests: security headers, session creation and reuse, cookie flags, the session id
+116 tests: security headers, session creation and reuse, cookie flags, the session id
 staying out of response bodies, input validation, media URL mapping, five hostile paths
-through `resolve_media`, search ranking and provenance fields, a real render whose output
-length matches the requested spans, cross-session isolation on both status and download,
-402 with no job when credits are short, atomicity of both the credit ledger and the
-assistant counter, what the assistant says with no key, and every path through the agent
-tools without an LLM.
+through `resolve_media`, search ranking and provenance fields, line words including
+duplicate pairs collapsing and an unknown line being absent rather than an error, a real
+render whose output length matches the requested spans, cross-session isolation on both
+status and download, 402 with no job when credits are short, atomicity of both the credit
+ledger and the assistant counter, what the assistant says with no key, and every path
+through the agent tools without an LLM.
 
 The atomicity tests fire two or three times the balance or limit concurrently and assert
 exactly the limit succeeds. Without that, two concurrent renders could spend the same

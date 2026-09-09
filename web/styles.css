@@ -876,6 +876,87 @@ ul {
   font-weight: 700;
 }
 
+/* --- Word tokens: the product's namesake ---
+   Each one is a real button, so Tab walks the sentence and Enter picks. They are laid out
+   as inline text rather than as a control strip, because what the editor is reading is a
+   sentence and what they are doing happens to be clicking it. */
+
+.take-words {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem;
+  margin: 0 -0.2rem;
+}
+
+.word {
+  border: none;
+  background: none;
+  padding: 0.05em 0.25em;
+  border-radius: var(--r-sm);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.word:hover {
+  background: var(--primary-fixed);
+  color: var(--on-primary-fixed);
+}
+
+/* Which words the search actually matched. Meaningful now that the whole sentence is on
+   screen — before the line words arrived, the "highlight" covered every word. */
+.word.is-match {
+  background: var(--secondary-fixed);
+  color: var(--on-secondary-container);
+  font-weight: 600;
+}
+
+.word.is-picked {
+  background: var(--primary);
+  color: var(--on-primary);
+  font-weight: 600;
+}
+
+.word.is-picked:hover {
+  background: var(--primary-container);
+  color: var(--on-primary);
+}
+
+/* What the editor picked, and the one button that acts on it. */
+.picked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-xs);
+  align-items: center;
+  justify-content: space-between;
+  margin-top: var(--s-sm);
+  padding: var(--s-xs) var(--s-sm);
+  border-radius: var(--r-lg);
+  background: var(--primary-fixed);
+}
+
+.picked-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2xs);
+  color: var(--on-primary-fixed);
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.picked-text {
+  flex: 1 1 8rem;
+  min-width: 0;
+  color: var(--on-primary-fixed);
+  font-size: 0.875rem;
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .take-foot {
   display: flex;
   flex-wrap: wrap;

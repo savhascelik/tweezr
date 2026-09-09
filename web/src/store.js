@@ -16,6 +16,12 @@ const state = {
   library: null,          // ClickHouse statistics
   query: { phrase: "", tone: "" },
   candidates: [],         // the find_line result
+  // The words of each line a candidate sits in, keyed "take_id:line_id". Filled after a
+  // search, and what makes the transcript clickable at word level.
+  lines: {},
+  // Which words the editor picked out. One selection at a time on purpose: two ranges on
+  // screen with one "add" button would be ambiguous.
+  selection: null,        // {key, from, to} — inclusive word indices
   timeline: [],           // the proposed cut: [{id, ...candidate}]
   playback: { playing: false, index: -1, offsetMs: 0 },
   status: { kind: "idle", message: "" },
@@ -120,6 +126,99 @@ export function setPlayback(playback) {
 export function setChat(chat) {
   state.chat = { ...state.chat, ...chat };
   notify();
+}
+
+// --- Word-level selection ---
+// The product's namesake. A phrase match gives you the matched range; picking words gives
+// you any range inside the line, which is the difference between "this line" and "these
+// three words of this line".
+
+export function setLines(lines) {
+  state.lines = { ...state.lines, ...lines };
+  notify();
+  return state.lines;
+}
+
+export function lineKey(candidate) {
+  return `${candidate.take_id}:${candidate.line_id}`;
+}
+
+/**
+ * Picks a word, or extends the pick to a range.
+ *
+ * `extend` comes from a shift-click or a shift-arrow. Extending across lines is not
+ * allowed, because a cut cannot span two recordings at once: if the key differs the pick
+ * simply moves.
+ *
+ * Clicking the single already-picked word clears it, so there is always a way out without
+ * hunting for a deselect button.
+ */
+export function selectWord(key, index, { extend = false } = {}) {
+  const words = state.lines[key];
+  if (!words || index < 0 || index >= words.length) return state.selection;
+
+  const current = state.selection;
+  if (extend && current && current.key === key) {
+    state.selection = {
+      key,
+      from: Math.min(current.from, index),
+      to: Math.max(current.to, index),
+    };
+  } else if (current && current.key === key && current.from === index && current.to === index) {
+    state.selection = null;
+  } else {
+    state.selection = { key, from: index, to: index };
+  }
+
+  notify();
+  return state.selection;
+}
+
+export function clearSelection() {
+  if (!state.selection) return null;
+  state.selection = null;
+  notify();
+  return null;
+}
+
+/**
+ * Turns the current pick into something that can be played, added or rendered.
+ *
+ * The result is shaped exactly like a candidate, so every path downstream — the player,
+ * the timeline, the render request — treats a hand-picked range and a phrase match
+ * identically. The id encodes the real start, which keeps it stable and lets the server
+ * resolve it the same way.
+ */
+export function selectionSegment() {
+  const selection = state.selection;
+  if (!selection) return null;
+
+  const words = state.lines[selection.key];
+  if (!words) return null;
+
+  const picked = words.slice(selection.from, selection.to + 1);
+  if (!picked.length) return null;
+
+  const [take_id, line_id] = selection.key.split(":");
+  // Any candidate from this line carries the provenance the words themselves do not.
+  const source = state.candidates.find(
+    (candidate) => lineKey(candidate) === selection.key
+  );
+  if (!source) return null;
+
+  const start_ms = picked[0].start_ms;
+  const end_ms = picked.at(-1).end_ms;
+
+  return {
+    ...source,
+    id: `${take_id}:${line_id}:${start_ms}`,
+    line_id: Number(line_id),
+    start_ms,
+    end_ms,
+    duration_ms: end_ms - start_ms,
+    text: picked.map((word) => word.word).join(" "),
+    words: picked.length,
+  };
 }
 
 /**

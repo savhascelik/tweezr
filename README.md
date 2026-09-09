@@ -21,11 +21,11 @@ which timecode.
 This repository is mid-build. As of now, **working and tested**:
 
 - Word-level timecodes from media, on CPU, at eight times realtime
-- ClickHouse ingest with word and phrase search, filtered by delivery — 12 query tests
+- ClickHouse ingest with word and phrase search, filtered by delivery — 20 query tests
 - Sample-accurate cutting and splicing on word boundaries
 - Assembling a new sentence from single words taken across different recordings
 - HTTP API: anonymous sessions, credit ledger, the `Origin-Agent-Cluster` header,
-  ranked candidates, provenance fields — 101 API tests
+  ranked candidates, provenance fields — 116 API tests
 - Timeline interface: virtual-splice player (double buffered, rAF driven), a clickable
   provenance strip, and a panel that drives the same flow by hand without WebMCP
 - Five WebMCP tools: `find_line`, `propose_cut`, `preview_segment`,
@@ -36,7 +36,10 @@ This repository is mid-build. As of now, **working and tested**:
 - In-page ADK assistant when a key is present; the product works without it
 - English and Turkish interface, English by default
 - Story track reordering by drag or by arrow keys on a block's handle
-- Interface rendered from state and checked headless — 111 UI tests, 96 web tests
+- **Word-level picking**: click a word to hear exactly that word, shift-click a second to
+  take the span. Verified end to end — a hand-picked 360ms range rendered to 360ms of
+  audio, measured off the output file, where the phrase match had been 820ms
+- Interface rendered from state and checked headless — 146 UI tests, 122 web tests
 
 Written but **not verified**: the Gemini tone pass and an assistant turn (no live key
 here), and the tools appearing in a real agent client (nothing local exposes

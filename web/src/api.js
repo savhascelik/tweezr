@@ -42,6 +42,23 @@ export function findLine({ phrase, tone = "", limit = 20 }) {
   });
 }
 
+/**
+ * The words of specific lines, with their timings.
+ *
+ * `find_line` returns the matched range only; this returns the sentence around it, which
+ * is what makes the transcript clickable at word level. Batched into one request because
+ * a search can return fifty candidates and fifty round trips to answer one question is
+ * the wrong shape.
+ */
+export function readLines(refs) {
+  return request("/api/lines", {
+    method: "POST",
+    body: JSON.stringify({
+      lines: refs.map(({ take_id, line_id }) => ({ take_id, line_id })),
+    }),
+  });
+}
+
 export function wordOccurrences(word, tone = "") {
   const query = tone ? `?tone=${encodeURIComponent(tone)}` : "";
   return request(`/api/word/${encodeURIComponent(word)}${query}`);

@@ -106,7 +106,15 @@ function makeNode(tag, namespace = null) {
       this.handlers.get(type).push(handler);
     },
     fire(type, event = {}) {
-      const base = { preventDefault() {}, stopPropagation() {}, ...event };
+      // A real MouseEvent or KeyboardEvent always carries the modifier flags, so the fake
+      // does too. Leaving them undefined let an `event.shiftKey` read pass a test that a
+      // browser would have answered differently.
+      const base = {
+        shiftKey: false,
+        preventDefault() {},
+        stopPropagation() {},
+        ...event,
+      };
       for (const handler of this.handlers.get(type) ?? []) handler(base);
       const inline = this[`on${type}`];
       if (typeof inline === "function") inline(base);
@@ -207,6 +215,20 @@ const candidate = (id, tone, start, end, text) => ({
 const CALM = candidate("S01_T03:1:800", "calm", 800, 2700, "I never asked for this");
 const TENSE = candidate("S01_T01:1:0", "tense", 0, 820, "I never asked for this");
 
+/* A nine-word line where the search matched the first five. That shape is the point of
+   word tweezing: the four words after the match are on screen and pickable. */
+const NINE_WORD_LINE = [
+  { word: "I", start_ms: 800, end_ms: 1000 },
+  { word: "never", start_ms: 1000, end_ms: 1300 },
+  { word: "asked", start_ms: 1300, end_ms: 1900 },
+  { word: "for", start_ms: 1900, end_ms: 2300 },
+  { word: "this.", start_ms: 2300, end_ms: 2700 },
+  { word: "Just", start_ms: 2900, end_ms: 3100 },
+  { word: "let", start_ms: 3100, end_ms: 3300 },
+  { word: "me", start_ms: 3300, end_ms: 3500 },
+  { word: "go.", start_ms: 3500, end_ms: 3800 },
+].map((word) => ({ ...word, word_norm: word.word.toLowerCase(), confidence: 0.95 }));
+
 function segmentOf(item) {
   return {
     ...item,
@@ -220,6 +242,8 @@ function baseState(overrides = {}) {
     library: { takes: 3, words: 27, vocabulary: 9 },
     query: { phrase: "", tone: "" },
     candidates: [],
+    lines: {},
+    selection: null,
     timeline: [],
     playback: { playing: false, index: -1, offsetMs: 0 },
     status: { kind: "idle", message: "" },
@@ -237,6 +261,9 @@ function mount() {
   const ui = createUI(root, {
     onSearch: record("search"),
     onAdd: record("add"),
+    onSelectWord: record("selectWord"),
+    onAddSelection: record("addSelection"),
+    onClearSelection: record("clearSelection"),
     onPreview: record("preview"),
     onRemove: record("remove"),
     onReorder: record("reorder"),
@@ -363,6 +390,114 @@ console.log("\n=== highlight is not fooled ===");
     "the line is still shown in full",
     allText(other.root).includes("I never asked for this")
   );
+}
+
+console.log("\n=== word tokens ===");
+{
+  const { root, ui, calls } = mount();
+  const state = baseState({
+    candidates: [CALM],
+    lines: { "S01_T03:1": NINE_WORD_LINE },
+    query: { phrase: "I never asked for this", tone: "" },
+  });
+  ui.render(state);
+
+  const tokens = byClass(root, "word");
+  check("one token per word of the line", tokens.length, 9);
+  check(
+    "in the order they were spoken",
+    tokens.map((token) => token.textContent).join(" "),
+    "I never asked for this. Just let me go."
+  );
+
+  // The match marking is only meaningful now that the whole sentence is on screen.
+  // Before the words arrived, the highlight covered every word of a phrase-only text.
+  check(
+    "only the matched words are marked",
+    tokens.filter((token) => token.classes.has("is-match")).map((t) => t.textContent),
+    ["I", "never", "asked", "for", "this."]
+  );
+  checkThat(
+    "the words after the match are on screen and not marked",
+    !tokens[5].classes.has("is-match") && tokens[5].textContent === "Just"
+  );
+
+  // Every token is a real button, so Tab reaches it and Enter picks it
+  checkThat("tokens are buttons", tokens.every((token) => token.tag === "button"));
+  check("each carries its own range", tokens[1].attributes.title, "00:01.000 – 00:01.300");
+  check("and reports whether it is picked", tokens[1].attributes["aria-pressed"], "false");
+
+  tokens[6].click();
+  check("clicking a word reaches the handler", calls.at(-1).name, "selectWord");
+  check("with the candidate and the index", calls.at(-1).args[1], 6);
+  check("and no extend", calls.at(-1).args[2], { extend: false });
+
+  tokens[8].fire("click", { shiftKey: true });
+  check("shift-click asks to extend", calls.at(-1).args[2], { extend: true });
+
+  tokens[3].fire("keydown", { key: "Enter" });
+  check("Enter picks from the keyboard", calls.at(-1).args[1], 3);
+  tokens[3].fire("keydown", { key: "Enter", shiftKey: true });
+  check("Shift+Enter extends from the keyboard", calls.at(-1).args[2], { extend: true });
+
+  const before = calls.length;
+  tokens[3].fire("keydown", { key: "x" });
+  check("an unrelated key does nothing", calls.length, before);
+}
+
+console.log("\n=== the picked range ===");
+{
+  const { root, ui, calls } = mount();
+  const state = baseState({
+    candidates: [CALM],
+    lines: { "S01_T03:1": NINE_WORD_LINE },
+    selection: { key: "S01_T03:1", from: 5, to: 8 },
+    query: { phrase: "I never asked for this", tone: "" },
+  });
+  ui.render(state);
+
+  const tokens = byClass(root, "word");
+  check(
+    "the picked words are marked",
+    tokens.filter((token) => token.classes.has("is-picked")).map((t) => t.textContent),
+    ["Just", "let", "me", "go."]
+  );
+  check("and say so for assistive tech", tokens[5].attributes["aria-pressed"], "true");
+
+  const bar = firstByClass(root, "picked");
+  checkThat("the pick is summarised", Boolean(bar), "no picked bar");
+  checkThat("with the word count", allText(bar).includes("4 words"), allText(bar));
+  // 3500..3800 is the last word, 2900 the first: 900ms, not the whole line
+  checkThat("and the picked duration, not the line's", allText(bar).includes("0.90 s"), allText(bar));
+  check("the picked text is shown", firstByClass(root, "picked-text").textContent, "Just let me go.");
+
+  buttonWithText(bar, "Tweeze these words").click();
+  check("tweezing reaches the handler", calls.at(-1).name, "addSelection");
+  buttonWithText(bar, "Clear").click();
+  check("clearing reaches the handler", calls.at(-1).name, "clearSelection");
+
+  // A pick on another line must not decorate this card
+  const other = mount();
+  other.ui.render({ ...state, selection: { key: "S01_T01:1", from: 0, to: 1 } });
+  check("a pick on another line marks nothing here", byClass(other.root, "is-picked").length, 0);
+  checkThat("and shows no summary", !firstByClass(other.root, "picked"));
+}
+
+console.log("\n=== falling back without word timings ===");
+{
+  // The words arrive in a second request. If it is slow or fails, the card shows the
+  // matched phrase — which is what it showed before word tweezing existed.
+  const { root, ui } = mount();
+  ui.render(
+    baseState({
+      candidates: [CALM],
+      lines: {},
+      query: { phrase: "I never asked for this", tone: "" },
+    })
+  );
+  check("no tokens without the timings", byClass(root, "word").length, 0);
+  checkThat("but the line is still readable", allText(root).includes("I never asked for this"), "");
+  check("and still highlighted", byClass(root, "take-hit").length, 1);
 }
 
 console.log("\n=== delivery filter ===");

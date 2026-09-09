@@ -178,6 +178,55 @@ def find_line(body: FindLineRequest, request: Request, response: Response) -> di
     }
 
 
+class LineRef(BaseModel):
+    take_id: str = Field(min_length=1, max_length=120)
+    line_id: int = Field(ge=0)
+
+
+class LinesRequest(BaseModel):
+    # Capped at the find_line ceiling: this only ever describes lines a search returned.
+    lines: list[LineRef] = Field(min_length=1, max_length=100)
+    project: str = config.DEMO_PROJECT
+
+
+@router.post("/lines")
+def read_lines(body: LinesRequest, request: Request, response: Response) -> dict:
+    """The words of specific lines, with their timings.
+
+    Behind the clickable transcript. `find_line` returns the matched range; this returns
+    the sentence around it, so a word can be previewed on its own and a range can be
+    picked by hand instead of taking the whole match.
+
+    Read-only and free, like every other search endpoint. Charging for reading the
+    transcript you are already looking at would be absurd.
+    """
+    current_session(request, response)
+    project = validate_project(body.project)
+
+    # De-duplicated: several candidates can be hits inside the same line, and asking
+    # ClickHouse for it more than once buys nothing.
+    pairs = sorted({(ref.take_id, ref.line_id) for ref in body.lines})
+
+    try:
+        lines = search.line_words(clickhouse(), project, pairs)
+    except Exception as error:
+        drop_client()
+        raise HTTPException(status_code=503, detail=f"Query failed: {error}")
+
+    return {
+        "lines": {
+            key: {
+                "words": words,
+                # The full sentence, which is what a phrase match does NOT give you
+                "text": " ".join(word["word"] for word in words),
+                "start_ms": words[0]["start_ms"],
+                "end_ms": words[-1]["end_ms"],
+            }
+            for key, words in lines.items()
+        }
+    }
+
+
 @router.get("/library/stats")
 def library_stats(request: Request, response: Response, project: str = config.DEMO_PROJECT) -> dict:
     current_session(request, response)

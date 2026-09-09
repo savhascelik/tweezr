@@ -149,6 +149,18 @@ function toneBadge(tone, score, withScore = true) {
 }
 
 /**
+ * Whether a word falls inside a range. Used to mark which words the search matched.
+ *
+ * Midpoint rather than full containment: alignment boundaries and phrase boundaries come
+ * from the same rows, so they agree, but a word that merely touches the edge should not
+ * count as part of the match.
+ */
+function wordInRange(word, start_ms, end_ms) {
+  const middle = (word.start_ms + word.end_ms) / 2;
+  return middle >= start_ms && middle <= end_ms;
+}
+
+/**
  * Splits a line so the searched phrase can be emphasised inside it.
  *
  * Three spans instead of one, because the highlight has to survive the no-innerHTML
@@ -618,14 +630,126 @@ export function createUI(root, handlers) {
     nodes.chatLog.scrollTop = nodes.chatLog.scrollHeight;
   }
 
+  /** The line as plain text, for when the word timings are not in yet. */
+  function plainLine(candidate, phrase) {
+    const line = el("p", { class: "take-line" });
+    for (const part of highlightParts(candidate.text, phrase)) {
+      line.appendChild(el("span", { class: part.hit ? "take-hit" : "", text: part.text }));
+    }
+    return line;
+  }
+
+  /**
+   * The line as clickable words. The product's namesake.
+   *
+   * Each token carries its own millisecond range, so clicking one plays exactly that word
+   * and shift-clicking a second picks the span between them. That is the difference
+   * between taking "this line" and taking "these three words of this line".
+   *
+   * Keyboard: the tokens are real buttons in document order, so Tab walks the sentence and
+   * Enter picks. Shift+Enter extends, which mirrors the shift-click.
+   */
+  function wordTokens(candidate, words, selection) {
+    const line = el("p", { class: "take-line take-words" });
+
+    words.forEach((word, index) => {
+      const matched = wordInRange(word, candidate.start_ms, candidate.end_ms);
+      const picked =
+        selection && index >= selection.from && index <= selection.to;
+
+      const classes = ["word"];
+      if (matched) classes.push("is-match");
+      if (picked) classes.push("is-picked");
+
+      line.appendChild(
+        el("button", {
+          type: "button",
+          class: classes.join(" "),
+          text: word.word,
+          // Read out as a range so a screen reader user knows what picking does
+          title: `${timecode(word.start_ms)} \u2013 ${timecode(word.end_ms)}`,
+          "aria-pressed": picked ? "true" : "false",
+          // Coerced, so the handler always receives a boolean whatever the event carries
+          onClick: (event) =>
+            handlers.onSelectWord(candidate, index, { extend: Boolean(event.shiftKey) }),
+          onKeyDown: (event) => {
+            if (event.key !== "Enter" && event.key !== " ") return;
+            event.preventDefault();
+            handlers.onSelectWord(candidate, index, { extend: Boolean(event.shiftKey) });
+          },
+        })
+      );
+    });
+
+    return line;
+  }
+
+  /** What the editor picked, and the one button that acts on it. */
+  function selectionBar(state, selection) {
+    const segment = selectionSegmentOf(state, selection);
+    if (!segment) return null;
+
+    return el("div", { class: "picked" }, [
+      el("span", { class: "picked-label" }, [
+        icon("tweezers", "icon-sm"),
+        el("span", {
+          text: t("pick.summary", {
+            words: segment.words,
+            duration: seconds(segment.duration_ms),
+          }),
+        }),
+      ]),
+      el("span", { class: "picked-text", text: segment.text }),
+      el("div", { class: "take-actions" }, [
+        el("button", {
+          type: "button",
+          class: "btn btn-quiet btn-sm",
+          text: t("pick.clear"),
+          onClick: () => handlers.onClearSelection(),
+        }),
+        el("button", {
+          type: "button",
+          class: "btn btn-primary btn-sm",
+          text: t("pick.add"),
+          onClick: () => handlers.onAddSelection(),
+        }),
+      ]),
+    ]);
+  }
+
+  /**
+   * The picked range, derived from state rather than read back from the store.
+   *
+   * `render` is handed a snapshot, so reading the live store here could describe a
+   * different moment than the rest of the frame.
+   */
+  function selectionSegmentOf(state, selection) {
+    if (!selection) return null;
+    const words = state.lines?.[selection.key];
+    if (!words?.length) return null;
+
+    const picked = words.slice(selection.from, selection.to + 1);
+    if (!picked.length) return null;
+
+    return {
+      words: picked.length,
+      text: picked.map((word) => word.word).join(" "),
+      duration_ms: picked.at(-1).end_ms - picked[0].start_ms,
+    };
+  }
+
   function renderTakes(state) {
     // Which candidates, which phrase is highlighted, which of them are already in the
-    // cut, and the language. Nothing else changes a card.
+    // cut, which words arrived, what is picked, and the language.
     const signature = [
       getLocale(),
       state.query.phrase,
       state.candidates.map((candidate) => candidate.id).join("|"),
       state.timeline.map((segment) => segment.id).join("|"),
+      Object.keys(state.lines ?? {}).sort().join("|"),
+      state.selection
+        ? `${state.selection.key}:${state.selection.from}:${state.selection.to}`
+        : "",
     ].join("\u0001");
     if (signature === takesSignature) return;
     takesSignature = signature;
@@ -642,13 +766,17 @@ export function createUI(root, handlers) {
 
     for (const candidate of state.candidates) {
       const inCut = state.timeline.some((segment) => segment.id === candidate.id);
+      const key = `${candidate.take_id}:${candidate.line_id}`;
+      const words = state.lines?.[key];
+      const selection =
+        state.selection && state.selection.key === key ? state.selection : null;
 
-      const line = el("p", { class: "take-line" });
-      for (const part of highlightParts(candidate.text, state.query.phrase)) {
-        line.appendChild(
-          el("span", { class: part.hit ? "take-hit" : "", text: part.text })
-        );
-      }
+      // With the words in, the whole sentence is on screen and every word is clickable.
+      // Without them — the request failed, or is still in flight — fall back to the
+      // matched phrase, which is what this showed before word tweezing existed.
+      const line = words?.length
+        ? wordTokens(candidate, words, selection)
+        : plainLine(candidate, state.query.phrase);
 
       const previewButton = el(
         "button",
@@ -691,6 +819,7 @@ export function createUI(root, handlers) {
             }),
           ]),
           line,
+          selectionBar(state, selection),
           foot,
         ])
       );

@@ -32,6 +32,40 @@ def phrase_search(client, project: str, phrase: str, tone: str = "") -> list[dic
     return queries.expand_phrase_rows(rows)
 
 
+def line_words(client, project: str, pairs: list[tuple[str, int]]) -> dict[str, list[dict]]:
+    """Every word of the given lines, keyed by `take_id:line_id`.
+
+    Phrase search returns the matched range only. This returns the sentence around it, so
+    the interface can make each word clickable and let a range be picked by hand — which
+    is the whole point of tweezing at word level rather than at line level.
+
+    One query for all the pairs. Fifty candidates would otherwise mean fifty round trips
+    to answer a single question.
+    """
+    if not pairs:
+        return {}
+
+    result = client.query(
+        queries.LINE_WORDS,
+        parameters={"project": project, "pairs": [(str(t), int(l)) for t, l in pairs]},
+    )
+
+    lines: dict[str, list[dict]] = {}
+    for row in result.result_rows:
+        row = dict(zip(result.column_names, row))
+        key = f"{row['take_id']}:{row['line_id']}"
+        lines.setdefault(key, []).append(
+            {
+                "word": row["word"],
+                "word_norm": row["word_norm"],
+                "start_ms": int(row["start_ms"]),
+                "end_ms": int(row["end_ms"]),
+                "confidence": round(float(row["confidence"]), 3),
+            }
+        )
+    return lines
+
+
 def word_search(
     client, project: str, word: str, tone: str = "", limit: int = 50
 ) -> list[dict]:

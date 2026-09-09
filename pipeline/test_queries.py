@@ -161,6 +161,52 @@ def main() -> int:
             client, TEST_PROJECT, "go now", tone="angry"), [])
     )
 
+    print("\n=== line words (word-level tweezing) ===")
+    # Phrase search returns the matched range; this returns the sentence around it, which
+    # is what lets a range be picked by hand instead of taking the whole match.
+    lines = search.line_words(client, TEST_PROJECT, [("T01", 1), ("T01", 2), ("T02", 1)])
+    results.append(check("three lines came back", sorted(lines), ["T01:1", "T01:2", "T02:1"]))
+    results.append(
+        check(
+            "words in spoken order",
+            [w["word"] for w in lines["T01:1"]],
+            ["go", "now", "go", "now"],
+        )
+    )
+    results.append(
+        check(
+            "each word carries its own range",
+            [(w["start_ms"], w["end_ms"]) for w in lines["T01:1"]],
+            [(0, 200), (250, 450), (500, 700), (750, 950)],
+        )
+    )
+    # Normalisation is derived on ingest, not stored by the caller
+    results.append(
+        check("normalised form travels", [w["word_norm"] for w in lines["T01:2"]], ["go", "now"])
+    )
+    results.append(
+        check("the original spelling is kept", [w["word"] for w in lines["T01:2"]], ["Go,", "now!"])
+    )
+    # A line that does not exist is simply absent, so the caller can ask for a batch
+    # without first proving every pair is real
+    results.append(
+        check(
+            "unknown pairs are absent, not an error",
+            sorted(search.line_words(client, TEST_PROJECT, [("T01", 1), ("NOPE", 9)])),
+            ["T01:1"],
+        )
+    )
+    results.append(check("no pairs, no query", search.line_words(client, TEST_PROJECT, []), {}))
+    # The pair is matched as a pair: T02 line 1 exists, T01 line 9 does not, and asking
+    # for both must not cross-product into T02:9 or T01:1
+    results.append(
+        check(
+            "pairs are matched as pairs, not as a cross product",
+            sorted(search.line_words(client, TEST_PROJECT, [("T02", 1), ("T01", 9)])),
+            ["T02:1"],
+        )
+    )
+
     print("\n=== no match ===")
     results.append(
         check("word not present", search.phrase_search(client, TEST_PROJECT, "helicopter"), [])

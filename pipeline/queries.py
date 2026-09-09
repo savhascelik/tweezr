@@ -92,6 +92,31 @@ HAVING length(hits) > 0
 ORDER BY take_id, line_id
 """
 
+# Every word of specific lines, in order. What makes word-level tweezing possible.
+#
+# Phrase search returns the matched range only, so the interface could show the phrase
+# but not the sentence it sits in — and a highlight covering 100% of the text explains
+# nothing. This fetches the whole line so the words around the match are clickable and a
+# range can be picked by hand.
+#
+# Batched over (take_id, line_id) pairs rather than one request per line: a search
+# returns up to fifty candidates and fifty round trips to answer one question is the
+# wrong shape. The pair tuple is bound server-side like every other parameter here.
+LINE_WORDS = """
+SELECT
+    take_id,
+    line_id,
+    word,
+    word_norm,
+    start_ms,
+    end_ms,
+    confidence
+FROM words
+WHERE project_id = {project:String}
+  AND (take_id, line_id) IN {pairs:Array(Tuple(String, UInt32))}
+ORDER BY take_id, line_id, start_ms
+"""
+
 # The agent's "what is in the library" question. Behind the get_library_stats tool.
 LIBRARY_STATS = """
 SELECT

@@ -213,6 +213,93 @@ console.log("\n=== store ===");
   store.clearTimeline();
   store.patch({ candidates: [] });
 
+  // --- Word-level picking ---
+  // The product's namesake. A phrase match gives you the matched range; picking words
+  // gives you any range inside the line.
+  console.log("\n=== word picking ===");
+  store.clearTimeline();
+  store.clearSelection();
+
+  const LINE = [
+    { word: "I", word_norm: "i", start_ms: 0, end_ms: 220, confidence: 0.88 },
+    { word: "never", word_norm: "never", start_ms: 220, end_ms: 420, confidence: 0.99 },
+    { word: "asked", word_norm: "asked", start_ms: 420, end_ms: 840, confidence: 0.98 },
+    { word: "for", word_norm: "for", start_ms: 840, end_ms: 1100, confidence: 0.99 },
+    { word: "this.", word_norm: "this", start_ms: 1100, end_ms: 1340, confidence: 0.99 },
+  ];
+
+  const lineCandidate = {
+    ...candidate("S01_T03:1:0", 0, 1340),
+    line_id: 1,
+    speaker: "MAYA",
+    tone: "calm",
+    tone_score: 0.9,
+  };
+  store.patch({ candidates: [lineCandidate] });
+  store.setLines({ "S01_T03:1": LINE });
+
+  check("the line key is take:line", store.lineKey(lineCandidate), "S01_T03:1");
+  check("the words are stored", store.getState().lines["S01_T03:1"].length, 5);
+
+  store.selectWord("S01_T03:1", 1);
+  check("one word picked", store.getState().selection, { key: "S01_T03:1", from: 1, to: 1 });
+
+  let picked = store.selectionSegment();
+  check("a single word resolves to its own range", [picked.start_ms, picked.end_ms], [220, 420]);
+  check("with its own text", picked.text, "never");
+  check("and its own duration", picked.duration_ms, 200);
+  check("the id encodes the real start", picked.id, "S01_T03:1:220");
+  // Provenance comes from the candidate, because the words themselves do not carry it
+  check("provenance is carried over", picked.source_url, "S01_T03.wav");
+  check("so is the delivery", picked.tone, "calm");
+
+  store.selectWord("S01_T03:1", 3, { extend: true });
+  check("extending covers the span", store.getState().selection, { key: "S01_T03:1", from: 1, to: 3 });
+  picked = store.selectionSegment();
+  check("the span is three words", picked.words, 3);
+  check("reading from the first to the last", picked.text, "never asked for");
+  check("across their full range", [picked.start_ms, picked.end_ms], [220, 1100]);
+
+  // Extending backwards must widen, not invert
+  store.selectWord("S01_T03:1", 0, { extend: true });
+  check("extending backwards widens", store.getState().selection, { key: "S01_T03:1", from: 0, to: 3 });
+
+  // Clicking the one picked word again clears it: there is always a way out
+  store.selectWord("S01_T03:1", 2);
+  store.selectWord("S01_T03:1", 2);
+  check("clicking the same single word clears the pick", store.getState().selection, null);
+  check("and there is nothing to resolve", store.selectionSegment(), null);
+
+  // A cut cannot span two recordings, so extending across lines moves the pick instead
+  store.setLines({ "S01_T01:1": LINE });
+  store.patch({ candidates: [lineCandidate, { ...lineCandidate, id: "S01_T01:1:0", take_id: "S01_T01" }] });
+  store.selectWord("S01_T03:1", 2);
+  store.selectWord("S01_T01:1", 4, { extend: true });
+  check(
+    "extending into another line moves the pick",
+    store.getState().selection,
+    { key: "S01_T01:1", from: 4, to: 4 }
+  );
+
+  // Out of range and unknown lines are refused rather than producing a broken range
+  store.selectWord("S01_T03:1", 99);
+  check("an index past the end is refused", store.getState().selection.key, "S01_T01:1");
+  store.selectWord("nope:9", 0);
+  check("an unknown line is refused", store.getState().selection.key, "S01_T01:1");
+
+  // A picked range goes onto the timeline exactly like a candidate does
+  store.selectWord("S01_T03:1", 1);
+  store.selectWord("S01_T03:1", 2, { extend: true });
+  store.appendToTimeline(store.selectionSegment());
+  check("a picked range can be added", store.getState().timeline.length, 1);
+  check("as its own segment", store.getState().timeline[0].text, "never asked");
+  check("with the picked duration", store.getState().timeline[0].duration_ms, 620);
+
+  store.clearSelection();
+  check("clearing empties the pick", store.getState().selection, null);
+  store.clearTimeline();
+  store.patch({ candidates: [] });
+
   console.log("\n=== chat state ===");
   store.setChat({ available: false, reason: "no api key" });
   check("chat disabled", store.getState().chat.available, false);
@@ -413,6 +500,31 @@ console.log("\n=== WebMCP tools ===");
   check("the segment the human removed is reflected", readBack.segments.length, 1);
   check("the right segment remains", readBack.segments[0].take, "S01_T01");
   check("still not rendered", readBack.rendered, false);
+
+  // The same has to hold for a range the human picked word by word. The agent never
+  // proposed this id -- it came from a click on the transcript -- and the tool still has
+  // to report it, or the agent would render something other than what is on screen.
+  store.setLines({
+    "S01_T01:1": [
+      { word: "I", start_ms: 0, end_ms: 120, confidence: 0.9 },
+      { word: "never", start_ms: 120, end_ms: 260, confidence: 0.9 },
+      { word: "asked", start_ms: 260, end_ms: 480, confidence: 0.9 },
+    ],
+  });
+  store.selectWord("S01_T01:1", 1);
+  store.selectWord("S01_T01:1", 2, { extend: true });
+  const handPicked = store.selectionSegment();
+  store.setTimeline([handPicked]);
+
+  const afterPick = await context.tools.get("get_timeline_state").execute();
+  check("a hand-picked range is visible to the agent", afterPick.segments.length, 1);
+  check("with the words the human kept", afterPick.segments[0].text, "never asked");
+  check(
+    "and the range the agent never proposed",
+    afterPick.total_duration_ms,
+    360
+  );
+  store.clearSelection();
 
   const previewed = await context.tools
     .get("preview_segment")

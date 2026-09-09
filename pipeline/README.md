@@ -28,7 +28,7 @@ media ──▶ transcribe.py ──▶ tone.py ──▶ ingest.py ──▶ Cl
 | `queries.py` | All of the SQL. No query strings are built anywhere else. |
 | `db.py` | ClickHouse connection, from the environment. |
 | `ingest.py` | Document → the `words` table. |
-| `search.py` | Line search. What sits behind the `find_line` tool. |
+| `search.py` | Line search, plus the line words behind the clickable transcript. |
 | `test_queries.py` | Query correctness tests. |
 | `verify_cut.py` | Cut verification plus the local reference implementation. |
 | `schema.sql` | The `words` table. Column order matches `schema.py`. |
@@ -76,7 +76,7 @@ Move-Item sample.wav scratch\
 ## Verification
 
 ```powershell
-& $py -m pipeline.test_queries                    # SQL correctness (12)
+& $py -m pipeline.test_queries                    # SQL correctness (20)
 & $py -m doctest pipeline\schema.py               # normalisation
 & $py -m pipeline.search --phrase "..." --compare scratch\T01.json
 ```

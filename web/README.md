@@ -72,10 +72,25 @@ tone values the corpus actually carries, so picking one narrows a real query; pi
 again clears it. It re-runs the search immediately, because a filter that needs a second
 click reads as broken.
 
-**Transcript and line picker.** One card per matching take: speaker, take id, delivery with
-its confidence, the word-level range, and the full line with the searched phrase marked.
-That highlight is the only one on the page, and it answers "why did this take come back"
-without a legend.
+**Transcript and word picker.** One card per matching take: speaker, take id, delivery with
+its confidence, the matched range, and the **whole line as clickable words**.
+
+This is the namesake. Click a word and exactly that word plays — hearing the boundary is
+the fastest way to believe a claim about milliseconds. Shift-click a second word and the
+span between them is picked, which is the difference between taking "this line" and taking
+"these three words of this line". Every token is a real `<button>` in document order, so
+Tab walks the sentence and Enter picks; Shift+Enter extends, mirroring the shift-click.
+
+The word timings arrive from `POST /api/lines` in a second request, batched over every
+line the search touched. If that request is slow or fails the card falls back to the
+matched phrase, which is what it showed before word picking existed.
+
+Marking which words the search matched only became meaningful once the whole sentence was
+on screen. Before, the "highlight" covered every word of a phrase-only text.
+
+A picked range becomes a segment shaped exactly like a candidate, so the player, the
+timeline and the render request all treat it identically — and `get_timeline_state` reports
+it to the agent even though the agent never proposed that id.
 
 **The stage.** The player's two video elements, a caption of the line being played with the
 phrase picked out, elapsed time measured across the **cut** rather than the source file, and
@@ -134,6 +149,17 @@ visible. The decision happens **before** the render.
 `get_timeline_state`'s description tells the agent the human may have altered the
 proposal and asks it to read this before `commit_render`. That is what makes the HITL
 loop explicit rather than implied.
+
+### The tools are line-level; the human works at word level
+
+There is deliberately no `tweeze_words` tool. The agent proposes lines, the human refines
+to the word, and `get_timeline_state` carries the refinement back. That split is the point
+rather than a gap: the agent is good at "which take reads this more calmly" and the human
+is the one who can hear that the take should start half a word later.
+
+It also keeps the tool surface honest. Giving the agent word-level picking means giving it
+the whole transcript in a tool result, and it would still be guessing at a judgement that
+takes ears.
 
 ### Verified API surface
 
@@ -262,12 +288,19 @@ Those tests were reading the machine's locale through Node's `navigator.language
 Turkish Windows they asserted against Turkish text and failed. They now pin the locale,
 which is the same hermeticity lesson the API tests learned from the demo seed.
 
-`test_web.mjs`, 96 tests: injection discipline, the `el()` contract, `noopener` on external
-links, store timeline operations including reordering and its clamping, `getState`
-returning a copy, subscription lifecycle, one subscriber's failure not taking down the
-others, and the i18n catalogue contract in both directions.
+`test_web.mjs`, 122 tests: injection discipline, the `el()` contract, `noopener` on external
+links, store timeline operations including reordering and its clamping, word picking and
+what a pick resolves to, `getState` returning a copy, subscription lifecycle, one
+subscriber's failure not taking down the others, and the i18n catalogue contract in both
+directions.
 
-`test_ui.mjs`, 111 tests: `createUI` and `render()` driven against a fake DOM across empty,
+The word-picking tests pin the awkward cases: extending backwards widens instead of
+inverting, extending across two lines moves the pick because a cut cannot span two
+recordings, clicking the one picked word clears it so there is always a way out, an index
+past the end is refused rather than producing a broken range, and a picked range carries the
+candidate's provenance since the word rows do not have any.
+
+`test_ui.mjs`, 146 tests: `createUI` and `render()` driven against a fake DOM across empty,
 candidates, cut, playing, rendered, failed, assistant-off and Turkish states. Serving the
 file says nothing about whether it renders, and this interface is built entirely in JS, so
 a typo in a node name would otherwise surface in a demo rather than a test run. It also
@@ -279,6 +312,11 @@ source filenames and timecodes are identical in both languages.
 
 The scrubber assertion was the one failure on the first run, and it was the test's
 arithmetic rather than the code's.
+
+The word-token failure was more useful. The fake DOM fired clicks without modifier flags,
+so `event.shiftKey` read as `undefined` and the assertion about "no extend" saw `{}`
+instead of `{extend: false}`. A real MouseEvent always carries those flags, so the fake now
+does too — and `ui.js` coerces, which makes the handler contract a boolean either way.
 
 The WebMCP side is tested against a fake `modelContext`: registration of the five tools,
 name pattern, schemas, `readOnlyHint` flags, every `execute` path, the unknown-candidate
