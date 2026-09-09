@@ -20,6 +20,11 @@ import os
 import sys
 from pathlib import Path
 
+# Allow running directly as `python dev/add_youtube.py` without -m
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
 from pipeline import db, ingest, schema, tone, transcribe, youtube
 from server import config
 
