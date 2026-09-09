@@ -493,20 +493,17 @@ export function createUI(root, handlers) {
     nodes.chatCard.classList.remove("mode-spotlight", "mode-sidebar", "is-hidden");
     if (!assistantOpen) {
       nodes.chatCard.classList.add("is-hidden");
-      nodes.chatBackdrop.classList.remove("is-visible");
       nodes.assistantToggle.classList.remove("is-active");
       return;
     }
     nodes.assistantToggle.classList.add("is-active");
     if (assistantMode === "sidebar") {
       nodes.chatCard.classList.add("mode-sidebar");
-      nodes.chatBackdrop.classList.add("is-visible");
       nodes.chatModeBtn.replaceChildren(icon("spotlight", "icon-sm"));
       label(nodes.chatModeBtn, "assistant.modeSpotlight", "title");
       label(nodes.chatModeBtn, "assistant.modeSpotlight", "ariaLabel");
     } else {
       nodes.chatCard.classList.add("mode-spotlight");
-      nodes.chatBackdrop.classList.remove("is-visible");
       nodes.chatModeBtn.replaceChildren(icon("sidebar", "icon-sm"));
       label(nodes.chatModeBtn, "assistant.modeSidebar", "title");
       label(nodes.chatModeBtn, "assistant.modeSidebar", "ariaLabel");

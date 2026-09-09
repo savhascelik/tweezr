@@ -1899,20 +1899,8 @@ ul {
 }
 
 .assistant-backdrop {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  z-index: 850;
-  opacity: 0;
-  transition: opacity var(--t-normal);
-}
-
-.assistant-backdrop.is-visible {
-  display: block;
-  opacity: 1;
+  display: none !important;
+  pointer-events: none;
 }
 
 .assistant-card {
@@ -1942,7 +1930,7 @@ ul {
 
 .chip-quota {
   font-size: 0.6875rem;
-  background: var(--surface-lowest);
+  background: var(--surface-low);
   border: 1px solid var(--outline-variant);
   color: var(--on-surface-variant);
   padding: 0.15rem 0.5rem;
@@ -2000,7 +1988,7 @@ ul {
 }
 
 /* ==========================================================================
-   MODE 1: Floating Center Spotlight HUD
+   MODE 1: Floating Center Spotlight HUD (Warm Frosted Glass)
    ========================================================================== */
 
 .assistant-card.mode-spotlight {
@@ -2008,15 +1996,15 @@ ul {
   bottom: 1.5rem;
   left: 50%;
   transform: translateX(-50%);
-  width: min(820px, calc(100vw - 32px));
-  max-width: 820px;
+  width: min(840px, calc(100vw - 32px));
+  max-width: 840px;
   z-index: 900;
-  background: rgba(22, 20, 19, 0.92);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border: 1px solid color-mix(in srgb, var(--outline-variant) 80%, var(--primary) 20%);
+  background: rgba(255, 251, 249, 0.96);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 75%, var(--primary) 25%);
   border-radius: 24px;
-  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(230, 92, 59, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 48px -12px rgba(90, 65, 56, 0.22), 0 4px 16px -4px rgba(90, 65, 56, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95);
   padding: var(--s-xs);
   animation: spotlightSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -2045,6 +2033,7 @@ ul {
 .assistant-card.mode-spotlight .card-lead .card-title {
   font-size: 0.9375rem;
   letter-spacing: -0.01em;
+  color: var(--on-surface);
 }
 
 .assistant-card.mode-spotlight .card-lead .hint {
@@ -2052,35 +2041,59 @@ ul {
 }
 
 .assistant-card.mode-spotlight .chat-stream-wrap {
-  max-height: 180px;
+  max-height: 220px;
   overflow-y: auto;
-  padding: var(--s-2xs) var(--s-2xs);
+  padding: var(--s-xs) var(--s-2xs);
   margin-bottom: var(--s-2xs);
-  mask-image: linear-gradient(to top, black 65%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to top, black 65%, transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, black 36px, black 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 36px, black 100%);
 }
 
 .assistant-card.mode-spotlight .chat-stream-wrap:empty {
   display: none;
 }
 
+/* Fading messages effect in spotlight mode: older messages dissolve towards the top */
+.assistant-card.mode-spotlight .chat-log > :not(:last-child):not(:nth-last-child(2)) {
+  opacity: 0.38;
+  filter: blur(0.4px);
+  transform: scale(0.985);
+  transition: all 0.35s ease;
+}
+
+.assistant-card.mode-spotlight .chat-log > :nth-last-child(2) {
+  opacity: 0.75;
+  transition: all 0.35s ease;
+}
+
+.assistant-card.mode-spotlight .chat-log > :last-child {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.assistant-card.mode-spotlight .chat-log:hover > * {
+  opacity: 1;
+  filter: none;
+  transform: scale(1);
+}
+
 .assistant-card.mode-spotlight .chat-form {
-  background: var(--surface-low);
+  background: var(--surface-lowest);
   border: 1px solid var(--outline-variant);
   border-radius: var(--r-full);
   padding: 0.35rem 0.5rem;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 4px rgba(90, 65, 56, 0.05);
   transition: all var(--t-fast);
 }
 
 .assistant-card.mode-spotlight .chat-form:focus-within {
   border-color: var(--primary);
-  background: var(--surface-container);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent), inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  background: var(--surface-lowest);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent), 0 2px 8px rgba(90, 65, 56, 0.08);
 }
 
 /* ==========================================================================
-   MODE 2: Left Sliding Sidebar Drawer
+   MODE 2: Left Sliding Sidebar Drawer (No Screen Blur)
    ========================================================================== */
 
 .assistant-card.mode-sidebar {
@@ -2091,12 +2104,16 @@ ul {
   width: min(440px, 92vw);
   height: 100vh;
   z-index: 900;
-  background: var(--surface-raised);
+  background: rgba(255, 251, 249, 0.97);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-right: 1px solid var(--outline-variant);
-  border-radius: 0 16px 16px 0;
-  box-shadow: 12px 0 48px rgba(0, 0, 0, 0.6);
+  border-radius: 0 20px 20px 0;
+  box-shadow: 8px 0 32px rgba(90, 65, 56, 0.12);
   padding: var(--s-md);
-  animation: sidebarSlideRight 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  animation: sidebarSlideRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes sidebarSlideRight {
@@ -2131,7 +2148,7 @@ ul {
 
 .assistant-card.mode-sidebar .chat-form {
   flex-shrink: 0;
-  background: var(--surface-low);
+  background: var(--surface-lowest);
   border: 1px solid var(--outline-variant);
   border-radius: var(--r-full);
   padding: 0.35rem 0.5rem;
@@ -2148,22 +2165,31 @@ ul {
 .bubble {
   padding: var(--s-xs) var(--s-sm);
   border-radius: var(--r-md);
-  background: var(--surface-low);
   font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 .bubble-user {
-  background: var(--surface-container);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface-lowest));
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 80%, var(--primary) 20%);
+  border-radius: 18px 18px 4px 18px;
   align-self: flex-end;
-  max-width: 90%;
-  font-family: var(--mono);
-  font-size: 0.8125rem;
+  max-width: 88%;
+  font-family: inherit;
+  font-size: 0.875rem;
   color: var(--on-surface);
+  box-shadow: 0 2px 6px rgba(90, 65, 56, 0.04);
 }
 
 .bubble-agent {
-  box-shadow: inset 3px 0 0 var(--primary);
-  background: var(--surface-low);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-left: 3px solid var(--primary);
+  border-radius: 4px 18px 18px 18px;
+  align-self: flex-start;
+  max-width: 90%;
+  color: var(--on-surface);
+  box-shadow: 0 2px 8px rgba(90, 65, 56, 0.05);
 }
 
 .bubble-thinking {
