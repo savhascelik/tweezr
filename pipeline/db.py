@@ -42,14 +42,36 @@ def connect():
     import clickhouse_connect
 
     settings = config()
-    return clickhouse_connect.get_client(
-        host=settings["host"],
-        port=settings["port"],
-        username=settings["username"],
-        password=settings["password"],
-        database=settings["database"],
-        secure=settings["secure"],
-    )
+    target_db = settings["database"]
+    try:
+        return clickhouse_connect.get_client(
+            host=settings["host"],
+            port=settings["port"],
+            username=settings["username"],
+            password=settings["password"],
+            database=target_db,
+            secure=settings["secure"],
+        )
+    except Exception as error:
+        if "UNKNOWN_DATABASE" in str(error) or "does not exist" in str(error):
+            root_client = clickhouse_connect.get_client(
+                host=settings["host"],
+                port=settings["port"],
+                username=settings["username"],
+                password=settings["password"],
+                database="default",
+                secure=settings["secure"],
+            )
+            root_client.command(f"CREATE DATABASE IF NOT EXISTS {target_db}")
+            return clickhouse_connect.get_client(
+                host=settings["host"],
+                port=settings["port"],
+                username=settings["username"],
+                password=settings["password"],
+                database=target_db,
+                secure=settings["secure"],
+            )
+        raise
 
 
 def describe() -> str:

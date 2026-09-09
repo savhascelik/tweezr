@@ -13,7 +13,7 @@ from typing import Sequence
 
 logger = logging.getLogger("pipeline.embed")
 
-MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-004")
+MODEL = os.environ.get("EMBEDDING_MODEL", "gemini-embedding-001")
 DIMENSIONS = 768
 
 
@@ -60,6 +60,7 @@ def embed_text(text: str) -> list[float]:
         response = client.models.embed_content(
             model=MODEL,
             contents=clean,
+            config={"output_dimensionality": DIMENSIONS},
         )
         if hasattr(response, "embedding") and response.embedding:
             vals = response.embedding.values or []
@@ -91,6 +92,7 @@ def embed_batch(texts: Sequence[str]) -> list[list[float]]:
             response = client.models.embed_content(
                 model=MODEL,
                 contents=chunk,
+                config={"output_dimensionality": DIMENSIONS},
             )
             embeddings = getattr(response, "embeddings", None) or []
             for item in embeddings:
