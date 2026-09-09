@@ -263,6 +263,23 @@ function baseState(overrides = {}) {
       error: "",
       result: null,
     },
+    vocabulary: {
+      loading: false,
+      scope: "",
+      takes: [
+        { take_id: "S01_T01", lines: 2, words: 9, duration_ms: 4380 },
+        { take_id: "S01_T03", lines: 2, words: 9, duration_ms: 3620 },
+      ],
+      // Uneven counts on purpose: the size steps are only meaningful across a real range
+      words: [
+        { key: "never", word: "never", count: 8, takes: 2 },
+        { key: "asked", word: "asked", count: 4, takes: 2 },
+        { key: "i", word: "I", count: 2, takes: 1 },
+        { key: "go", word: "go", count: 1, takes: 1 },
+      ],
+      truncated: false,
+      error: "",
+    },
     ...overrides,
   };
 }
@@ -288,6 +305,7 @@ function mount() {
     onRender: record("render"),
     onChat: record("chat"),
     onUpload: record("upload"),
+    onScope: record("scope"),
   });
   return { root, ui, calls };
 }
@@ -976,6 +994,244 @@ console.log("\n=== uploads off on this deployment ===");
     firstByClass(root, "drop-note").textContent.includes("no transcriber"),
     firstByClass(root, "drop-note").textContent
   );
+}
+
+console.log("\n=== vocabulary panel ===");
+{
+  /* The counterweight to a search-first page. Without it you have to type a phrase you
+     already know, which is a memory test on footage you just uploaded — the transcriber
+     does not always hear what you said. */
+  const { root, ui, calls } = mount();
+  ui.render(baseState());
+
+  const chips = byClass(root, "vocab-word");
+  check("every word is a chip", chips.length, 4);
+  check(
+    "in the order the server sent, most spoken first",
+    chips.map((chip) => firstByClass(chip, "vocab-text").textContent),
+    ["never", "asked", "I", "go"]
+  );
+  checkThat("each chip is a button", chips.every((chip) => chip.tag === "button"), "");
+
+  // Sized by how often the word is spoken, spread across the real range
+  check("the most spoken word gets the largest step", chips[0].classes.has("is-w4"), true);
+  check("the least spoken gets the smallest", chips[3].classes.has("is-w1"), true);
+  checkThat(
+    "and the middle lands in between",
+    chips[1].classes.has("is-w2") || chips[1].classes.has("is-w3"),
+    chips[1].className
+  );
+
+  // The count is on the chip when it means something, and left off when it does not
+  check("a repeated word shows its count", firstByClass(chips[0], "vocab-n").textContent, "8");
+  check("a word spoken once does not", firstByClass(chips[3], "vocab-n"), null);
+  checkThat(
+    "the full figure is still available to a screen reader",
+    chips[3].attributes["aria-label"].includes("spoken 1x"),
+    chips[3].attributes["aria-label"]
+  );
+
+  // Clicking is exactly what typing the word and pressing search would do
+  chips[1].click();
+  check("clicking a chip searches", calls.at(-1).name, "search");
+  check("for that word", calls.at(-1).args[0].phrase, "asked");
+
+  // Nothing is filtered out. A word cloud normally drops "the" and "and"; a tool for
+  // assembling sentences must not, because those join two fragments.
+  const withStopwords = mount();
+  withStopwords.ui.render(
+    baseState({
+      vocabulary: {
+        ...baseState().vocabulary,
+        words: [
+          { key: "the", word: "the", count: 9, takes: 2 },
+          { key: "and", word: "and", count: 5, takes: 2 },
+        ],
+      },
+    })
+  );
+  check(
+    "connective words are kept",
+    byClass(withStopwords.root, "vocab-word").map((chip) => firstByClass(chip, "vocab-text").textContent),
+    ["the", "and"]
+  );
+
+  // On a small library every count is 1. Every chip the same size is the truth about a
+  // small library, not a broken cloud.
+  const flat = mount();
+  flat.ui.render(
+    baseState({
+      vocabulary: {
+        ...baseState().vocabulary,
+        words: [
+          { key: "one", word: "one", count: 1, takes: 1 },
+          { key: "two", word: "two", count: 1, takes: 1 },
+        ],
+      },
+    })
+  );
+  checkThat(
+    "a library with no repetition renders without dividing by zero",
+    byClass(flat.root, "vocab-word").every((chip) => chip.classes.has("is-w1")),
+    byClass(flat.root, "vocab-word").map((chip) => chip.className).join(" | ")
+  );
+}
+
+console.log("\n=== vocabulary scope ===");
+{
+  const { root, ui, calls } = mount();
+  ui.render(baseState());
+
+  const scope = firstByClass(root, "vocab-scope");
+  check(
+    "the whole library plus every take",
+    scope.children.map((option) => option.attributes.value),
+    ["", "S01_T01", "S01_T03"]
+  );
+  checkThat(
+    "a take option carries its size",
+    scope.children[1].textContent.includes("9 words"),
+    scope.children[1].textContent
+  );
+  check("the whole library is selected by default", scope.value, "");
+  checkThat(
+    "and the subtitle says so",
+    allText(firstByClass(root, "card-sub")) !== null && findAll(root, (n) => n.textContent.includes("across all takes")).length > 0,
+    ""
+  );
+
+  scope.fire("change", { target: { value: "S01_T03" } });
+  check("changing it reaches the handler", calls.at(-1).name, "scope");
+  check("with the take id", calls.at(-1).args[0], "S01_T03");
+
+  // Scoped straight after an ingest, which is the case the panel exists for: a counter
+  // going from 3 to 4 is not an answer to "what is in my footage".
+  const scoped = mount();
+  scoped.ui.render(
+    baseState({ vocabulary: { ...baseState().vocabulary, scope: "S01_T03" } })
+  );
+  check("the select follows the scope", firstByClass(scoped.root, "vocab-scope").value, "S01_T03");
+  checkThat(
+    "and the subtitle names the take",
+    findAll(scoped.root, (node) => node.textContent.includes("Every word in S01_T03")).length > 0,
+    ""
+  );
+
+  // A freshly ingested take may not be in the list the panel last read. The select would
+  // silently show the first option, so the scope is added back rather than misreported.
+  const unlisted = mount();
+  unlisted.ui.render(
+    baseState({ vocabulary: { ...baseState().vocabulary, scope: "UP04" } })
+  );
+  const select = firstByClass(unlisted.root, "vocab-scope");
+  check("an unlisted scope is still shown", select.value, "UP04");
+  checkThat(
+    "as an option of its own",
+    select.children.some((option) => option.attributes.value === "UP04"),
+    select.children.map((o) => o.attributes.value).join(",")
+  );
+}
+
+console.log("\n=== vocabulary edge states ===");
+{
+  const empty = mount();
+  empty.ui.render(
+    baseState({ vocabulary: { ...baseState().vocabulary, words: [], takes: [] } })
+  );
+  check("an empty library shows no chips", byClass(empty.root, "vocab-word").length, 0);
+  checkThat(
+    "and explains what to do",
+    allText(empty.root).includes("Add a recording"),
+    ""
+  );
+
+  /* An empty RESULT is not an empty library, and the two need different answers. Telling
+     someone whose delivery filter excluded everything to add footage they already have is
+     worse than saying nothing. `takes` is unfiltered, which is what separates them. */
+  const filteredOut = mount();
+  filteredOut.ui.render(
+    baseState({
+      query: { phrase: "", tone: "calm" },
+      vocabulary: { ...baseState().vocabulary, words: [] },
+    })
+  );
+  checkThat(
+    "a filter that excluded everything says so",
+    allText(filteredOut.root).includes("under the current filter"),
+    ""
+  );
+  checkThat(
+    "and does not tell you to add footage you already have",
+    !allText(filteredOut.root).includes("Add a recording"),
+    ""
+  );
+
+  const loading = mount();
+  loading.ui.render(
+    baseState({ vocabulary: { ...baseState().vocabulary, words: [], loading: true } })
+  );
+  checkThat("loading is distinguished from empty", allText(loading.root).includes("Reading the library"), "");
+
+  // A failure costs the shortcut, not the page: the search box still works.
+  const failed = mount();
+  failed.ui.render(
+    baseState({
+      vocabulary: { ...baseState().vocabulary, words: [], error: "ClickHouse is down" },
+    })
+  );
+  checkThat("an error is stated", allText(failed.root).includes("ClickHouse is down"), "");
+  checkThat(
+    "and the search box is still there",
+    findAll(failed.root, (node) => node.attributes.id === "phrase").length === 1,
+    ""
+  );
+
+  const truncated = mount();
+  truncated.ui.render(
+    baseState({ vocabulary: { ...baseState().vocabulary, truncated: true } })
+  );
+  checkThat(
+    "truncation is admitted, not hidden",
+    allText(truncated.root).includes("most spoken words"),
+    ""
+  );
+}
+
+console.log("\n=== the vocabulary is not rebuilt every frame ===");
+{
+  // Up to a couple of hundred chips. Rebuilding them sixty times a second during playback
+  // would be the most expensive thing on the page for a list that never changed.
+  const { root, ui } = mount();
+  const state = baseState({
+    timeline: [segmentOf(CALM)],
+    playback: { playing: true, index: 0, offsetMs: 0 },
+  });
+  ui.render(state);
+  const before = byClass(root, "vocab-word")[0];
+
+  ui.render({ ...state, playback: { playing: true, index: 0, offsetMs: 16 } });
+  checkThat("an offset-only change does not rebuild the chips", byClass(root, "vocab-word")[0] === before);
+
+  ui.render({
+    ...state,
+    vocabulary: {
+      ...state.vocabulary,
+      words: [...state.vocabulary.words, { key: "new", word: "new", count: 1, takes: 1 }],
+    },
+  });
+  checkThat("a new word does rebuild", byClass(root, "vocab-word")[0] !== before);
+
+  const relocalised = mount();
+  relocalised.ui.render(state);
+  const note = firstByClass(relocalised.root, "vocab-scope").children[0].textContent;
+  i18n.setLocale("tr");
+  relocalised.ui.render(state);
+  checkThat(
+    "a language change rebuilds despite the same data",
+    firstByClass(relocalised.root, "vocab-scope").children[0].textContent !== note,
+    firstByClass(relocalised.root, "vocab-scope").children[0].textContent
+  );
+  i18n.setLocale("en");
 }
 
 console.log("\n=== render job ===");

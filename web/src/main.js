@@ -46,6 +46,10 @@ const actions = {
       loadLines(result.candidates).catch((error) =>
         console.warn("could not load line words", error)
       );
+      // The vocabulary follows the delivery filter, so it has to be re-read when the
+      // filter changes — and a mood button changes it by running a search. Otherwise a
+      // chip would report five occurrences under a filter that excludes all five.
+      actions.loadVocabulary().catch(() => {});
       return result;
     } catch (error) {
       store.setStatus("error", error.message);
@@ -189,6 +193,34 @@ const actions = {
   },
 
   /**
+   * Reads the library's vocabulary, optionally narrowed to one take.
+   *
+   * The tone is not a parameter: it is whatever the last search used, read from the store.
+   * Two places deciding the filter is how the chip counts and the search results drift
+   * apart, and the panel's whole promise is that clicking a chip finds something.
+   *
+   * `take` left undefined keeps the current scope; passing "" widens it back to the whole
+   * library. Distinguishing the two is the difference between "refresh" and "reset".
+   */
+  async loadVocabulary({ take } = {}) {
+    const state = store.getState();
+    const scope = take === undefined ? state.vocabulary.scope : take;
+    store.setVocabulary({ loading: true, scope, error: "" });
+    try {
+      const result = await api.vocabulary({ take: scope, tone: state.query.tone });
+      return store.setVocabulary({
+        loading: false,
+        takes: result.takes,
+        words: result.words,
+        truncated: result.truncated,
+      });
+    } catch (error) {
+      // A failure here costs the shortcut, not the page: the search box still works.
+      return store.setVocabulary({ loading: false, words: [], error: error.message });
+    }
+  },
+
+  /**
    * Brings the visitor's own recording into the library.
    *
    * Two phases, because they fail differently and take different amounts of time. The
@@ -248,6 +280,11 @@ const actions = {
       const library = await api.libraryStats();
       store.patch({ library: library.stats });
       if (job.session) store.patch({ session: job.session });
+
+      // Scoped to the take that just arrived, not merely refreshed. A counter going from
+      // 3 to 4 is not an answer to "what is in my footage" — the words are, and in a
+      // library of any size they would be lost among everything else.
+      actions.loadVocabulary({ take: job.take_id }).catch(() => {});
 
       store.setUpload({
         status: "done",
@@ -417,6 +454,7 @@ const ui = createUI(root, {
   onRender: () => actions.render().catch(() => {}),
   onChat: (message) => actions.chat(message).catch(() => {}),
   onUpload: (file, options) => actions.upload(file, options).catch(() => {}),
+  onScope: (take) => actions.loadVocabulary({ take }).catch(() => {}),
 });
 
 const player = createPlayer({
@@ -503,6 +541,10 @@ export const ready = (async () => {
     } catch (error) {
       store.setUpload({ available: false, reason: error.message });
     }
+
+    // The vocabulary is a shortcut into search, not a dependency of it, so a failure here
+    // is swallowed inside the action rather than taking startup down.
+    await actions.loadVocabulary({ take: "" });
 
     const webmcp = await installTools({ actions, store });
 

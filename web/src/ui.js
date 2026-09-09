@@ -492,6 +492,44 @@ export function createUI(root, handlers) {
     nodes.uploadState,
   ]);
 
+  /* ================= What the library can say ================= */
+  // The counterweight to a search-first interface. Typing a phrase you already know is
+  // fine for a fixed corpus and a memory test on footage you just added: the transcriber
+  // does not always hear what you said, and an empty result then reads as a broken
+  // product rather than a wrong guess. Every word here is a button that searches for it.
+
+  nodes.vocabCount = el("span", { class: "chip-value" });
+  // Written in render(), not registered with label(): it names the take in scope, and
+  // applyLabels() would overwrite a dynamic string on the next pass.
+  nodes.vocabSub = el("p", { class: "card-sub" });
+  nodes.vocabWords = el("div", { class: "vocab" });
+  nodes.vocabNote = el("p", { class: "hint" });
+
+  nodes.vocabScope = el("select", {
+    class: "vocab-scope",
+    onChange: (event) => handlers.onScope(event.target.value),
+  });
+  label(nodes.vocabScope, "vocab.scopeLabel", "title");
+  label(nodes.vocabScope, "vocab.scopeLabel", "ariaLabel");
+
+  nodes.vocabCard = el("section", { class: "card" }, [
+    el("div", { class: "card-head" }, [
+      el("div", { class: "card-lead" }, [
+        el("div", { class: "card-icon card-icon-amber" }, [icon("transcript")]),
+        el("div", {}, [
+          label(el("h2", { class: "card-title" }), "vocab.heading"),
+          nodes.vocabSub,
+        ]),
+      ]),
+      el("div", { class: "vocab-head" }, [
+        el("span", { class: "chip" }, [nodes.vocabCount]),
+        nodes.vocabScope,
+      ]),
+    ]),
+    nodes.vocabWords,
+    nodes.vocabNote,
+  ]);
+
   /* ================= Stage ================= */
 
   // The player mounts into this layer; the overlays are siblings after it so they paint
@@ -657,7 +695,12 @@ export function createUI(root, handlers) {
       hero,
       el("div", { class: "grid" }, [
         el("div", { class: "col" }, [transcriptCard, nodes.chatCard]),
-        el("div", { class: "col" }, [stageCard, nodes.altCard, nodes.uploadCard]),
+        el("div", { class: "col" }, [
+          stageCard,
+          nodes.altCard,
+          nodes.uploadCard,
+          nodes.vocabCard,
+        ]),
       ]),
       trackCard,
     ]),
@@ -684,6 +727,10 @@ export function createUI(root, handlers) {
    */
   let takesSignature = null;
   let trackSignature = null;
+  // Same reason, and it matters more here: the vocabulary can be a couple of hundred
+  // chips, and rebuilding them sixty times a second during playback would be the most
+  // expensive thing on the page for a list that never changed.
+  let vocabSignature = null;
 
   function currentIndex() {
     return playbackIndex >= 0 ? playbackIndex : 0;
@@ -1241,6 +1288,120 @@ export function createUI(root, handlers) {
     nodes.uploadState.className = `drop-state${upload.status === "failed" ? " status-error" : ""}`;
   }
 
+  /**
+   * The vocabulary panel: every word in the library, each one a search button.
+   *
+   * Sized by how often a word is spoken. On a small library every count is 1 and every
+   * chip is the same size — that is the truth about a small library, not a broken cloud,
+   * and inventing variation would be a lie about the data.
+   *
+   * Nothing is filtered out. A word cloud normally drops "the" and "and"; a tool for
+   * assembling sentences out of recorded speech must not, because those are exactly the
+   * words you need to join two fragments.
+   */
+  function renderVocabulary(state) {
+    const vocabulary = state.vocabulary ?? {};
+    const words = vocabulary.words ?? [];
+    const takes = vocabulary.takes ?? [];
+    const scope = vocabulary.scope ?? "";
+
+    const signature = JSON.stringify([
+      getLocale(),
+      scope,
+      vocabulary.loading ? 1 : 0,
+      vocabulary.error ?? "",
+      vocabulary.truncated ? 1 : 0,
+      takes.map((take) => `${take.take_id}:${take.words}`),
+      words.map((entry) => `${entry.key}:${entry.count}`),
+    ]);
+    if (signature === vocabSignature) return;
+    vocabSignature = signature;
+
+    nodes.vocabCount.textContent = t("vocab.count", { count: words.length });
+    nodes.vocabSub.textContent = scope
+      ? t("vocab.subTake", { take: scope })
+      : t("vocab.sub");
+
+    // Rebuilt rather than patched: the take list changes only when a take is added, which
+    // the signature already gates on.
+    nodes.vocabScope.replaceChildren();
+    nodes.vocabScope.appendChild(el("option", { value: "", text: t("vocab.all") }));
+    for (const take of takes) {
+      nodes.vocabScope.appendChild(
+        el("option", {
+          value: take.take_id,
+          text: t("vocab.takeOption", {
+            take: take.take_id,
+            words: take.words,
+            duration: seconds(take.duration_ms),
+          }),
+        })
+      );
+    }
+    // The scope can name a take that is no longer listed; the select would silently show
+    // the first option, so it is added back rather than misreporting what is on screen.
+    if (scope && !takes.some((take) => take.take_id === scope)) {
+      nodes.vocabScope.appendChild(el("option", { value: scope, text: scope }));
+    }
+    nodes.vocabScope.value = scope;
+
+    nodes.vocabWords.replaceChildren();
+
+    if (vocabulary.error) {
+      nodes.vocabNote.textContent = vocabulary.error;
+      nodes.vocabNote.className = "hint status-error";
+      return;
+    }
+    nodes.vocabNote.className = "hint";
+
+    if (!words.length) {
+      // Two different reasons, and they need different answers. An empty library is fixed
+      // by adding a recording; an empty RESULT means the delivery filter or the take scope
+      // excluded everything, and telling that user to add footage they already have is
+      // worse than saying nothing. `takes` is unfiltered, which is what separates the two.
+      nodes.vocabNote.textContent = vocabulary.loading
+        ? t("vocab.loading")
+        : takes.length
+          ? t("vocab.filtered")
+          : t("vocab.empty");
+      return;
+    }
+
+    const busiest = words.reduce((most, entry) => Math.max(most, entry.count), 1);
+    for (const entry of words) {
+      // Four steps, spread across the real range. With a single occurrence everywhere the
+      // divisor would be zero, so that case is answered before dividing.
+      const step =
+        busiest > 1 ? 1 + Math.floor((3 * (entry.count - 1)) / (busiest - 1)) : 1;
+
+      const chip = el("button", {
+        type: "button",
+        class: `vocab-word is-w${step}`,
+        // A click is exactly what typing the word and pressing search would do, including
+        // the delivery filter. One code path, so the two cannot disagree.
+        onClick: () => handlers.onSearch({ phrase: entry.word, tone: currentTone }),
+      });
+      chip.appendChild(el("span", { class: "vocab-text", text: entry.word }));
+      if (entry.count > 1) {
+        chip.appendChild(
+          el("span", { class: "vocab-n", text: String(entry.count), "aria-hidden": "true" })
+        );
+      }
+      const description = t("vocab.chipLabel", {
+        word: entry.word,
+        count: entry.count,
+        takes: entry.takes,
+      });
+      chip.title = description;
+      chip.setAttribute("aria-label", description);
+      nodes.vocabWords.appendChild(chip);
+    }
+
+    nodes.vocabNote.textContent = vocabulary.truncated
+      ? t("vocab.truncated", { count: words.length })
+      : t("vocab.tip");
+  }
+
   function renderJob(state) {
     const job = state.render ?? { status: "idle" };
     nodes.renderResult.replaceChildren();
@@ -1318,6 +1479,7 @@ export function createUI(root, handlers) {
     renderAlt(state);
     renderTrack(state);
     renderUpload(state);
+    renderVocabulary(state);
     renderJob(state);
   }
 

@@ -24,12 +24,12 @@ This repository is mid-build. As of now, **working and tested**:
   multilingual model by default, language detected or named
 - Your own audio or video into the library in one command: `python -m dev.add_take`
 - Video end to end, verified: search → word picking → mp4 render with h264 and aac
-- ClickHouse ingest with word and phrase search, filtered by delivery — 31 query and
+- ClickHouse ingest with word and phrase search, filtered by delivery — 45 query and
   contract tests
 - Sample-accurate cutting and splicing on word boundaries
 - Assembling a new sentence from single words taken across different recordings
 - HTTP API: anonymous sessions, credit ledger, the `Origin-Agent-Cluster` header,
-  ranked candidates, provenance fields — 138 API tests
+  ranked candidates, provenance fields — 164 API tests
 - Timeline interface: virtual-splice player (double buffered, rAF driven), a clickable
   provenance strip, and a panel that drives the same flow by hand without WebMCP
 - Five WebMCP tools: `find_line`, `propose_cut`, `preview_segment`,
@@ -46,7 +46,10 @@ This repository is mid-build. As of now, **working and tested**:
 - **Bring your own footage from the browser**: drop in audio or video, any language, and it
   is transcribed and searchable. Isolated per session, so one visitor's upload does not
   appear in anyone else's library — asserted by a test that opens a second session
-- Interface rendered from state and checked headless — 183 UI tests, 122 web tests
+- **A vocabulary panel**: every word in the library as a search button, sized by how often
+  it is spoken. After an ingest it scopes itself to the take that just arrived, so the
+  answer to "what is in my footage" is on screen instead of behind a guess
+- Interface rendered from state and checked headless — 215 UI tests, 128 web tests
 
 Written but **not verified**: the Gemini tone pass and an assistant turn (no live key
 here), and the tools appearing in a real agent client (nothing local exposes
@@ -150,18 +153,18 @@ Deploying to Cloud Run: `DEPLOY.md`.
 ## Tests
 
 ```powershell
-.venv\Scripts\python.exe -m pipeline.test_queries    #  31  SQL and the data contract
-.venv\Scripts\python.exe -m server.test_api          # 138  API, uploads, render, agent tools
+.venv\Scripts\python.exe -m pipeline.test_queries    #  45  SQL and the data contract
+.venv\Scripts\python.exe -m server.test_api          # 164  API, uploads, render, agent tools
 .venv\Scripts\python.exe -m doctest pipeline\schema.py
-node web\test_web.mjs                                # 122  store, WebMCP, injection, i18n
-node web\test_ui.mjs                                 # 183  the interface, rendered headless
+node web\test_web.mjs                                # 128  store, WebMCP, injection, i18n
+node web\test_ui.mjs                                 # 215  the interface, rendered headless
 node web\test_approve.mjs                            #  35  approval dialog
 ```
 
 Against a running instance, local or deployed:
 
 ```powershell
-.venv\Scripts\python.exe -m dev.check_deploy http://127.0.0.1:8080   # 27 checks
+.venv\Scripts\python.exe -m dev.check_deploy http://127.0.0.1:8080   # 31 checks
 ```
 
 End-to-end ingest and cut verification: `pipeline/README.md`.

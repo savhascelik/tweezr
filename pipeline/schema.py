@@ -102,6 +102,39 @@ def normalize_word(word: str) -> str:
     return text.strip(_EDGE_PUNCT).translate(_I_FOLD).casefold()
 
 
+def display_word(word: str) -> str:
+    """The spelling to put on screen. Same cleanup as the search key, but keeps the case.
+
+    The vocabulary panel shows words as chips and a click searches for the one clicked, so
+    the text has to be presentable AND has to normalise back to the same key. The stored
+    spelling is not, on its own: a word ending a sentence is stored as "go." and a chip
+    reading "go." next to a search box that fills with "go." looks like a defect.
+
+    Everything `normalize_word` does EXCEPT the two case operations, which is what keeps
+    "I" from becoming "i" and "İstanbul" from becoming "istanbul" on screen.
+
+    >>> display_word("go.")
+    'go'
+    >>> display_word('"Asked,')
+    'Asked'
+    >>> display_word("İstanbul")
+    'İstanbul'
+    >>> display_word("well-known")
+    'well-known'
+
+    The property the panel relies on: cleaning the spelling never changes which word it is.
+
+    >>> normalize_word(display_word("go.")) == normalize_word("go.")
+    True
+    >>> normalize_word(display_word("Işık")) == normalize_word("Işık")
+    True
+    """
+    text = unicodedata.normalize("NFKC", word).strip()
+    # Stripped again at the end: removing a trailing comma from "hello ," exposes the space
+    # that was behind it.
+    return text.strip(_EDGE_PUNCT).strip()
+
+
 def normalize_phrase(phrase: str) -> list[str]:
     """Turns a searched phrase into normalised words. Empty results drop out."""
     return [w for w in (normalize_word(p) for p in phrase.split()) if w]

@@ -37,6 +37,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from pipeline import db as ch  # noqa: E402
 from pipeline import ingest as ingest_module  # noqa: E402
 from pipeline import queries  # noqa: E402
+from pipeline import schema  # noqa: E402
 
 from . import sessions  # noqa: E402
 from .main import create_app  # noqa: E402
@@ -304,6 +305,108 @@ def main() -> int:
             lines([{"take_id": "S01_T03", "line_id": 1}])
             check(
                 "reading a line costs nothing",
+                client.get("/api/session").json()["session"]["credits"],
+                before,
+            )
+
+    print("\n=== vocabulary (what the library can say) ===")
+    if clickhouse is None:
+        print("  SKIPPED    no ClickHouse")
+    else:
+        with TestClient(app) as client:
+            def vocab(**params):
+                return client.get(
+                    "/api/vocabulary", params={"project": API_TEST_PROJECT, **params}
+                )
+
+            answer = vocab()
+            check("vocabulary 200", answer.status_code, 200)
+            body = answer.json()
+            words = {entry["key"]: entry for entry in body["words"]}
+
+            # The fixture is three takes of the same two lines, so every word is spoken
+            # three times.
+            check("nine distinct words", len(body["words"]), 9)
+            check("counted across takes", words["asked"]["count"], 3)
+            check("and the takes it spans", words["asked"]["takes"], 3)
+            check("most spoken first", body["words"][0]["count"], 3)
+
+            # The display spelling is cleaned but keeps its case: a chip reading "go." next
+            # to a search box that fills with "go." looks like a defect.
+            check("trailing punctuation is gone", words["go"]["word"], "go")
+            check("case is preserved", words["i"]["word"], "I")
+
+            # THE INVARIANT the panel rests on: clicking a chip searches for its own text,
+            # so that text has to normalise back to the key it was listed under. If it did
+            # not, a chip promising three occurrences would return nothing.
+            check_that(
+                "every spelling normalises back to its key",
+                all(
+                    schema.normalize_word(entry["word"]) == entry["key"]
+                    for entry in body["words"]
+                ),
+                "a chip would search for a different word than the one it lists",
+            )
+            for entry in body["words"]:
+                found = client.post(
+                    "/api/find_line",
+                    json={"phrase": entry["word"], "project": API_TEST_PROJECT},
+                )
+                if found.json()["total"] < 1:
+                    check(f"clicking {entry['word']!r} finds something", 0, 1)
+                    break
+            else:
+                check_that("clicking any chip finds something", True)
+
+            # The takes list is what the scope selector is built from
+            check(
+                "takes listed",
+                [take["take_id"] for take in body["takes"]],
+                ["S01_T01", "S01_T03", "S01_T05"],
+            )
+            check("with their word counts", body["takes"][0]["words"], 9)
+            # The last word of the whole take, not of its first line: the fixture's second
+            # line ("Just let me go") runs to 4380.
+            check("and their length", body["takes"][0]["duration_ms"], 4380)
+            check("with their line counts", body["takes"][0]["lines"], 2)
+
+            # Narrowed to one recording. This is what the interface asks for right after an
+            # ingest, so the words that just arrived are visible on their own.
+            scoped = vocab(take="S01_T01").json()
+            check("scope echoed back", scoped["take"], "S01_T01")
+            check("scoped words are that take's", len(scoped["words"]), 9)
+            check_that(
+                "and each is spoken once there",
+                all(entry["count"] == 1 for entry in scoped["words"]),
+                "a single take cannot contain the same fixture line three times",
+            )
+
+            # An unknown take needs no validation: the project filter is what confines the
+            # read, so it matches nothing rather than leaking anything.
+            check("unknown take is empty, not an error", vocab(take="nope").status_code, 200)
+            check("and returns no words", vocab(take="nope").json()["words"], [])
+
+            # The vocabulary follows the delivery filter, otherwise a chip could report
+            # three occurrences under a filter that excludes all three.
+            calm = vocab(tone="calm").json()
+            check_that(
+                "the tone filter narrows the counts",
+                all(entry["count"] == 1 for entry in calm["words"]),
+                "only one of the three takes is calm",
+            )
+            check("an unknown tone is rejected", vocab(tone="nope").status_code, 422)
+            check("an unknown project is rejected", vocab(project="secret").status_code, 404)
+
+            # A display limit, so it is clamped rather than failing a page load
+            check("limit clamped to the ceiling", vocab(limit=99999).json()["limit"], config.MAX_VOCABULARY)
+            check("and never to zero", vocab(limit=0).json()["limit"], 1)
+            check("truncation is reported", vocab(limit=1).json()["truncated"], True)
+            check("and not claimed when false", vocab().json()["truncated"], False)
+
+            before = client.get("/api/session").json()["session"]["credits"]
+            vocab()
+            check(
+                "reading the vocabulary costs nothing",
                 client.get("/api/session").json()["session"]["credits"],
                 before,
             )

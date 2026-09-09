@@ -311,6 +311,70 @@ def main() -> int:
         )
     )
 
+    print("\n=== vocabulary (what the library can say) ===")
+    # The panel that stops the interface being a memory test. Every word is a button, so
+    # the display spelling has to be presentable AND has to normalise back to the key it
+    # is listed under.
+    vocab = search.vocabulary(client, TEST_PROJECT)
+    by_key = {entry["key"]: entry for entry in vocab}
+    results.append(check("two distinct words", sorted(by_key), ["go", "now"]))
+    # "go" x2 in T01 line 1, once in line 2, once in T02
+    results.append(check("counted across every take", by_key["go"]["count"], 4))
+    results.append(check("and the takes it spans", by_key["go"]["takes"], 2))
+
+    # The stored spellings for this key are "now", "now" and "now!", and max() picks
+    # "now!" — so this only reads correctly because the spelling is cleaned afterwards.
+    results.append(check("the display spelling is cleaned", by_key["now"]["word"], "now"))
+    results.append(
+        check(
+            "THE INVARIANT: a spelling normalises back to its own key",
+            [
+                entry["word"]
+                for entry in vocab
+                if schema.normalize_word(entry["word"]) != entry["key"]
+            ],
+            [],
+        )
+    )
+    # And the consequence that matters: clicking a chip cannot come back empty
+    results.append(
+        check(
+            "so every word in the panel is findable",
+            [
+                entry["word"]
+                for entry in vocab
+                if not search.phrase_search(client, TEST_PROJECT, entry["word"])
+            ],
+            [],
+        )
+    )
+
+    scoped = {entry["key"]: entry["count"] for entry in search.vocabulary(client, TEST_PROJECT, take="T01")}
+    results.append(check("scoped to one take", scoped, {"go": 3, "now": 3}))
+    results.append(
+        check(
+            "an unknown take is empty, not an error",
+            search.vocabulary(client, TEST_PROJECT, take="NOPE"),
+            [],
+        )
+    )
+    # The panel follows the delivery filter, so a chip cannot promise four occurrences
+    # under a filter that excludes all four
+    whisper = {entry["key"]: entry["count"] for entry in search.vocabulary(client, TEST_PROJECT, tone="whisper")}
+    results.append(check("the tone filter narrows the counts", whisper, {"go": 1, "now": 1}))
+    # Ordered by how often a word is spoken, because the limit has to drop the rare words
+    # rather than an arbitrary slice
+    results.append(
+        check("the limit keeps the most spoken", len(search.vocabulary(client, TEST_PROJECT, limit=1)), 1)
+    )
+
+    inventory = {take["take_id"]: take for take in search.take_inventory(client, TEST_PROJECT)}
+    results.append(check("both takes listed", sorted(inventory), ["T01", "T02"]))
+    results.append(check("with their line count", inventory["T01"]["lines"], 2))
+    results.append(check("their word count", inventory["T01"]["words"], 6))
+    # The last word of the take: line 2's "now!" starts at 2250 and runs 200 ms
+    results.append(check("and where the take ends", inventory["T01"]["duration_ms"], 2450))
+
     print("\n=== no match ===")
     results.append(
         check("word not present", search.phrase_search(client, TEST_PROJECT, "helicopter"), [])

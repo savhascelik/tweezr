@@ -387,6 +387,57 @@ def library_stats(request: Request, response: Response, project: str = config.DE
     return {"project": project, "stats": stats}
 
 
+@router.get("/vocabulary")
+def vocabulary(
+    request: Request,
+    response: Response,
+    project: str = config.DEMO_PROJECT,
+    take: str = "",
+    tone: str = "",
+    limit: int = config.MAX_VOCABULARY,
+) -> dict:
+    """Every word in the visible library, and the takes it is spread across.
+
+    WHY: without this the interface is a memory test. You have to type a phrase you
+    already know, which is fine for the demo corpus and wrong the moment you bring your
+    own footage — the transcriber does not always hear what you said, and an empty result
+    reads as a broken product rather than a wrong guess.
+
+    `take` narrows it to one recording, which is what the interface does straight after an
+    ingest so the words that just arrived are visible on their own. It needs no validation:
+    the project filter is what confines the read, so a take id belonging to another session
+    matches nothing rather than leaking anything.
+
+    Read-only and free, like every other search endpoint.
+    """
+    session = current_session(request, response)
+    projects = resolve_projects(session, project)
+    validate_tone(tone)
+
+    # Clamped rather than rejected: this is a display limit, and a client asking for more
+    # than we will draw is not an error worth failing a page load over.
+    capped = max(1, min(limit, config.MAX_VOCABULARY))
+
+    try:
+        client = clickhouse()
+        words = search.vocabulary(client, projects, take=take, tone=tone, limit=capped)
+        takes = search.take_inventory(client, projects)
+    except Exception as error:
+        drop_client()
+        raise HTTPException(status_code=503, detail=f"Query failed: {error}")
+
+    return {
+        "project": project,
+        # Echoed back so the interface can tell whether it is looking at what it asked for
+        "take": take,
+        "tone": tone,
+        "limit": capped,
+        "truncated": len(words) >= capped,
+        "takes": takes,
+        "words": words,
+    }
+
+
 @router.get("/word/{word}")
 def word_occurrences(
     word: str,

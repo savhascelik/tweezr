@@ -300,6 +300,28 @@ console.log("\n=== store ===");
   store.clearTimeline();
   store.patch({ candidates: [] });
 
+  console.log("\n=== vocabulary state ===");
+  // The panel that stops the page being a memory test. Merged like every other slice, so
+  // a partial update cannot wipe the rest of it.
+  check("no scope to begin with", store.getState().vocabulary.scope, "");
+  store.setVocabulary({
+    words: [{ key: "never", word: "never", count: 8, takes: 2 }],
+    takes: [{ take_id: "S01_T01", lines: 2, words: 9, duration_ms: 4380 }],
+  });
+  check("words landed", store.getState().vocabulary.words.length, 1);
+  store.setVocabulary({ loading: true });
+  check("a partial update keeps the words", store.getState().vocabulary.words.length, 1);
+  check("and applies the change", store.getState().vocabulary.loading, true);
+
+  // "" and undefined are different answers: one widens the panel back to the whole
+  // library, the other means "leave the scope alone". Only the store's side is here; the
+  // distinction itself is made in main.js.
+  store.setVocabulary({ scope: "UP04" });
+  check("the scope can name a take", store.getState().vocabulary.scope, "UP04");
+  store.setVocabulary({ scope: "" });
+  check("and can be widened back", store.getState().vocabulary.scope, "");
+  store.setVocabulary({ words: [], takes: [], loading: false });
+
   console.log("\n=== chat state ===");
   store.setChat({ available: false, reason: "no api key" });
   check("chat disabled", store.getState().chat.available, false);

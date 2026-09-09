@@ -711,6 +711,11 @@ ul {
   color: var(--on-primary-fixed);
 }
 
+.card-icon-amber {
+  background: var(--secondary-fixed);
+  color: var(--on-secondary-container);
+}
+
 .card-title {
   font-size: 1.25rem;
   font-weight: 600;
@@ -921,6 +926,90 @@ ul {
 .word.is-picked:hover {
   background: var(--primary-container);
   color: var(--on-primary);
+}
+
+/* ==========================================================================
+   Vocabulary
+   --- Every word in the library as a search button. The counterweight to a search-first
+       page: without it you have to already know what the transcriber heard. ---
+   ========================================================================== */
+
+.vocab-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-xs);
+  flex-wrap: wrap;
+}
+
+.vocab-scope {
+  padding: 0.3rem var(--s-sm);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--on-surface-variant);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  max-width: 14rem;
+}
+
+.vocab {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2xs) var(--s-xs);
+  align-items: baseline;
+  margin-top: var(--s-md);
+}
+
+.vocab-word {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-full);
+  padding: 0.15rem 0.6rem;
+  background: var(--surface-low);
+  color: var(--on-surface);
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.vocab-word:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--on-primary);
+}
+
+/* How often the word is spoken. On a small library every count is 1 and every chip is the
+   same size — that is the truth about a small library, not a broken cloud. */
+.vocab-word.is-w1 { font-size: 0.8125rem; }
+.vocab-word.is-w2 { font-size: 0.9375rem; }
+
+.vocab-word.is-w3 {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  background: var(--secondary-fixed);
+  border-color: transparent;
+  color: var(--on-secondary-container);
+}
+
+.vocab-word.is-w4 {
+  font-size: 1.1875rem;
+  font-weight: 700;
+  background: var(--secondary-container);
+  border-color: transparent;
+  color: var(--on-secondary-container);
+}
+
+.vocab-n {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
 }
 
 /* What the editor picked, and the one button that acts on it. */

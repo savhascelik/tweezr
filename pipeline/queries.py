@@ -144,6 +144,63 @@ ORDER BY count() DESC, take_id, line_id
 LIMIT 1
 """
 
+# Every distinct word in the visible library, with how often it is spoken.
+#
+# WHY THIS EXISTS
+# The product is search-first: you type a phrase and get candidates. That works for a
+# corpus you already know, and falls apart on footage you just brought in — you have to
+# guess a word, and what the transcriber heard is not always what you said. A search that
+# comes back empty then reads as a broken product rather than a missed guess. This makes
+# the vocabulary itself visible, so picking a word is a click instead of a memory test.
+#
+# It is a GROUP BY over word_norm, which is the primary key's second column, so it comes
+# off the index in one pass.
+#
+# `max(word)` picks the display spelling. NOT `any()`: any() may return a different
+# variant on every run, so a panel that refreshes would shuffle "The" and "the" for no
+# reason. Byte order puts lowercase last among ASCII variants, which is the spelling you
+# want in nearly every case, and when only one variant exists it is the only answer.
+#
+# Aliased to `spelling` rather than `word` because an alias must not shadow a column name
+# — see the note in PHRASE_MATCHES.
+#
+# The tone filter is here so the panel can show the vocabulary of the CURRENT filter.
+# Without it a chip could report five occurrences and then return nothing when clicked,
+# because the filter excluded all five.
+VOCABULARY = """
+SELECT
+    word_norm,
+    max(word)          AS spelling,
+    count()            AS occurrences,
+    uniqExact(take_id) AS takes
+FROM words
+WHERE project_id IN {projects:Array(String)}
+  AND ({take:String} = '' OR take_id = {take:String})
+  AND ({tone:String} = '' OR tone = {tone:String})
+GROUP BY word_norm
+ORDER BY occurrences DESC, word_norm
+LIMIT {limit:UInt32}
+"""
+
+# One row per recording. Behind the vocabulary panel's scope selector.
+#
+# An unknown take_id needs no validation anywhere: the project filter is what confines the
+# read, so a take from someone else's session simply matches nothing.
+#
+# `duration_ms` rather than `end_ms`: the alias would shadow a column, and the last word's
+# end is what the interface wants to show anyway.
+TAKE_INVENTORY = """
+SELECT
+    take_id,
+    uniqExact(line_id) AS lines,
+    count()            AS words,
+    max(end_ms)        AS duration_ms
+FROM words
+WHERE project_id IN {projects:Array(String)}
+GROUP BY take_id
+ORDER BY take_id
+"""
+
 # The agent's "what is in the library" question. Behind the get_library_stats tool.
 LIBRARY_STATS = """
 SELECT

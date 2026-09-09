@@ -85,6 +85,69 @@ def line_words(
     return lines
 
 
+def vocabulary(
+    client,
+    project: str | list[str],
+    take: str = "",
+    tone: str = "",
+    limit: int = 240,
+) -> list[dict]:
+    """Every distinct word in the library, most spoken first.
+
+    What the interface needs to stop being a memory test. Search-first is fine for a corpus
+    you know; on footage you just uploaded you have to guess a word, and the transcriber
+    does not always hear what you said. Showing the vocabulary turns that guess into a
+    click.
+
+    `spelling` is what gets displayed AND what a click searches for. It normalises back to
+    the same `word_norm` returned here, so a chip can never lead to an empty result — the
+    tests pin that both ways.
+    """
+    result = client.query(
+        queries.VOCABULARY,
+        parameters={
+            "projects": as_projects(project),
+            "take": take,
+            "tone": tone,
+            "limit": limit,
+        },
+    )
+    rows = [dict(zip(result.column_names, r)) for r in result.result_rows]
+    entries = []
+    for row in rows:
+        # Cleaned here rather than in SQL, because the normalisation rules live in schema
+        # and splitting them across two languages is how they drift apart. A stored
+        # spelling can end a sentence, and a chip reading "go." is not presentable.
+        word = schema.display_word(row["spelling"])
+        entries.append(
+            {
+                "key": row["word_norm"],
+                # A word made entirely of punctuation would clean down to nothing; fall
+                # back to the key so the chip still has something to show.
+                "word": word or row["word_norm"],
+                "count": int(row["occurrences"]),
+                "takes": int(row["takes"]),
+            }
+        )
+    return entries
+
+
+def take_inventory(client, project: str | list[str]) -> list[dict]:
+    """One entry per recording, so the vocabulary panel can be narrowed to one take."""
+    result = client.query(
+        queries.TAKE_INVENTORY, parameters={"projects": as_projects(project)}
+    )
+    return [
+        {
+            "take_id": row["take_id"],
+            "lines": int(row["lines"]),
+            "words": int(row["words"]),
+            "duration_ms": int(row["duration_ms"]),
+        }
+        for row in (dict(zip(result.column_names, r)) for r in result.result_rows)
+    ]
+
+
 def word_search(
     client, project: str | list[str], word: str, tone: str = "", limit: int = 50
 ) -> list[dict]:

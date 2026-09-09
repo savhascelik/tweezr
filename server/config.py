@@ -53,6 +53,12 @@ MAX_SESSIONS_PER_IP_PER_HOUR = int(os.environ.get("MAX_SESSIONS_PER_IP_PER_HOUR"
 MAX_CONCURRENT_RENDERS_PER_SESSION = 1
 MAX_PHRASE_WORDS = 40          # stop query inflation
 
+# The vocabulary panel is a wall of clickable chips. Past a couple of hundred it stops
+# being scannable, so the cap is a readability limit as much as a query one — and the rows
+# are ordered by how often each word is spoken, so a cut here drops the rare words rather
+# than an arbitrary slice.
+MAX_VOCABULARY = int(os.environ.get("MAX_VOCABULARY", "240"))
+
 # The assistant is metered by count rather than credits: a turn is an LLM call, a
 # different resource from the render and ingest that credits pay for. Leaving it free
 # would publish an open LLM endpoint. The limit is wide enough to finish a demo

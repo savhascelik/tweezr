@@ -63,6 +63,7 @@ allowance.
 | `POST /api/find_line` | phrase → ranked candidates | 0 |
 | `POST /api/lines` | the words of given lines, with timings (clickable transcript) | 0 |
 | `GET /api/word/{word}` | every occurrence of a word (single-word assembly) | 0 |
+| `GET /api/vocabulary` | every word in the library, and the takes it spans | 0 |
 | `GET /api/library/stats` | what the library holds | 0 |
 | `GET /api/upload/status` | are uploads on, and the limits | 0 |
 | `POST /api/upload` | bring your own audio or video | 1 per started minute |
@@ -88,6 +89,40 @@ nothing, and a test asserts the balance does not move.
 Ranking is product logic and lives in `routes.py` rather than the SQL: the highest
 delivery confidence first. Given a tone filter, that reads directly as "the best example
 of that delivery first".
+
+## Vocabulary
+
+`GET /api/vocabulary` is the answer to a complaint that was entirely fair: you upload a
+recording, the take counter moves, and nothing else on the page changes. A counter is not
+an answer to "what is in my footage". A search-first interface is fine for a corpus you
+already know and a memory test on footage you just brought in, because the transcriber does
+not always hear what you said — and a search that comes back empty then reads as a broken
+product rather than a wrong guess.
+
+So the endpoint returns every distinct word, ordered by how often it is spoken, plus one
+row per take for the interface's scope selector. `?take=` narrows it to one recording, which
+is what the interface asks for straight after an ingest so the words that just arrived are
+visible on their own rather than diluted into everything else.
+
+Three decisions worth knowing:
+
+- **The tone filter applies here too.** Without it a chip could report five occurrences and
+  return nothing when clicked, because the delivery filter excluded all five.
+- **The display spelling is cleaned but keeps its case** (`schema.display_word`). The stored
+  spelling can end a sentence, and a chip reading `go.` next to a search box that fills with
+  `go.` looks like a defect. The invariant the panel rests on is that a cleaned spelling
+  normalises back to the key it was listed under, so clicking a chip cannot come back empty.
+  `pipeline/test_queries.py` and `server/test_api.py` both pin it, the second by actually
+  searching for every word the endpoint returned.
+- **An unknown `take` needs no validation.** The project filter is what confines the read,
+  so a take id belonging to another session matches nothing rather than leaking anything.
+
+`limit` is clamped rather than rejected: it is a display limit, and a client asking for more
+than we will draw is not worth failing a page load over.
+
+There is deliberately **no agent tool for this**. The agent's job is phrase search; handing
+it the corpus vocabulary would pad a tool result with hundreds of words to answer a question
+it was not asked. `get_library_stats` already reports the vocabulary *size*.
 
 ## Uploads
 

@@ -118,6 +118,34 @@ of presenting a black rectangle.
 cut. Swapping replaces the block at its own position, because the editor chose that order
 and changing a delivery is not a reason to lose it.
 
+**Vocabulary.** Every word in the library as a search button, sized by how often it is
+spoken, with a selector to narrow it to one take.
+
+This exists because of a fair complaint: you upload a recording, the take counter moves, and
+nothing else on the page changes. A counter is not an answer to "what is in my footage". And
+searching only works if you can guess a word the transcriber actually produced, which on your
+own footage you often cannot — the empty result then reads as a broken product rather than a
+wrong guess.
+
+After an ingest the panel scopes itself to the take that just arrived, so you see exactly
+what came in instead of hunting for it among everything else. A click is exactly what typing
+that word and pressing search would do, delivery filter included — one code path, so the two
+cannot disagree.
+
+Three things it deliberately does not do:
+
+- **It does not drop stopwords.** A word cloud normally hides "the" and "and". A tool for
+  assembling sentences out of recorded speech must not, because those are the words that
+  join two fragments.
+- **It does not invent variation.** On a small library every count is 1 and every chip is
+  the same size. That is the truth about a small library.
+- **It does not hide truncation.** Past the cap it says so and suggests narrowing to one
+  take, rather than presenting a partial list as the whole vocabulary.
+
+The chips carry a rebuild guard like the other two lists, and it matters most here: a couple
+of hundred chips rebuilt sixty times a second during playback would be the most expensive
+thing on the page for a list that never changed.
+
 **Story track.** One block per segment, each with a frame from its own start time, its take
 id, its line and its duration. Reorderable by drag **or** by arrow keys on the block's
 handle — order is the edit, and it costs nothing because nothing has been rendered.
@@ -305,11 +333,11 @@ Those tests were reading the machine's locale through Node's `navigator.language
 Turkish Windows they asserted against Turkish text and failed. They now pin the locale,
 which is the same hermeticity lesson the API tests learned from the demo seed.
 
-`test_web.mjs`, 122 tests: injection discipline, the `el()` contract, `noopener` on external
+`test_web.mjs`, 128 tests: injection discipline, the `el()` contract, `noopener` on external
 links, store timeline operations including reordering and its clamping, word picking and
-what a pick resolves to, `getState` returning a copy, subscription lifecycle, one
-subscriber's failure not taking down the others, and the i18n catalogue contract in both
-directions.
+what a pick resolves to, the vocabulary slice merging rather than replacing, `getState`
+returning a copy, subscription lifecycle, one subscriber's failure not taking down the
+others, and the i18n catalogue contract in both directions.
 
 The word-picking tests pin the awkward cases: extending backwards widens instead of
 inverting, extending across two lines moves the pick because a cut cannot span two
@@ -317,7 +345,7 @@ recordings, clicking the one picked word clears it so there is always a way out,
 past the end is refused rather than producing a broken range, and a picked range carries the
 candidate's provenance since the word rows do not have any.
 
-`test_ui.mjs`, 183 tests: `createUI` and `render()` driven against a fake DOM across empty,
+`test_ui.mjs`, 215 tests: `createUI` and `render()` driven against a fake DOM across empty,
 candidates, cut, playing, rendered, failed, assistant-off and Turkish states. Serving the
 file says nothing about whether it renders, and this interface is built entirely in JS, so
 a typo in a node name would otherwise surface in a demo rather than a test run. It also
@@ -326,6 +354,13 @@ the cut and not the source file, that the highlight is not fooled by case or by 
 that is absent, that reordering works from the keyboard and not only from a pointer, that
 whitespace alone does not spend a message from the assistant quota, and that take ids,
 source filenames and timecodes are identical in both languages.
+
+The vocabulary tests pin what the panel promises rather than how it looks: connective words
+are kept, a library with no repetition renders without dividing by zero, a chip click reaches
+the same search handler that typing would, the count is shown only when it means something,
+a scope the take list does not contain is still reported instead of silently falling back to
+the first option, truncation is admitted, and the chips are not rebuilt on an offset-only
+render.
 
 The scrubber assertion was the one failure on the first run, and it was the test's
 arithmetic rather than the code's.
@@ -361,3 +396,5 @@ What it cannot prove is that it **looks** right, and no fake DOM implements medi
 8. Layout and colour at each breakpoint, and does the self-hosted font actually load
 9. Do the story-track thumbnails show a frame on video takes
 10. Does drag-to-reorder feel right, and does the keyboard path work with a screen reader
+11. Does the vocabulary read as a cloud, and does clicking a chip land on real candidates
+12. Upload a recording: does the vocabulary scope itself to the new take without being asked

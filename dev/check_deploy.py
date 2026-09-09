@@ -98,6 +98,30 @@ def main() -> int:
                 check(ranged.status_code == 206, "media supports HTTP range",
                       f"expected 206, got {ranged.status_code}")
 
+        print("\n=== vocabulary ===")
+        # The way in for a visitor who does not know what the corpus says. If this is empty
+        # on a deployment with takes in it, the page is a search box with nothing to type.
+        vocab = client.get("/api/vocabulary")
+        if check(vocab.status_code == 200, "vocabulary read", vocab.text[:120]):
+            body = vocab.json()
+            words = body["words"]
+            check(len(words) > 0, f"{len(words)} distinct word(s) offered", "nothing to click")
+            check(
+                len(body["takes"]) == takes,
+                f"{len(body['takes'])} take(s) listed for the scope selector",
+                f"stats said {takes}",
+            )
+            if words:
+                # Every chip is a search button, so its own text has to find it. A chip that
+                # comes back empty is worse than no chip.
+                sample = words[0]["word"]
+                hit = client.post("/api/find_line", json={"phrase": sample})
+                check(
+                    hit.status_code == 200 and hit.json()["total"] > 0,
+                    f"clicking {sample!r} finds something",
+                    hit.text[:160],
+                )
+
         print("\n=== uploads ===")
         upload = client.get("/api/upload/status")
         if check(upload.status_code == 200, "upload status read", upload.text[:120]):

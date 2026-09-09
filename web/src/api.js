@@ -68,6 +68,24 @@ export function libraryStats() {
   return request("/api/library/stats");
 }
 
+/**
+ * Every word in the library, and the takes it is spread across.
+ *
+ * Behind the vocabulary panel. Without it the page is a memory test: you have to type a
+ * phrase you already know, which does not survive contact with footage you just brought
+ * in — the transcriber does not always hear what you said.
+ *
+ * `take` narrows it to one recording, `tone` follows the delivery filter so a chip cannot
+ * promise five occurrences and then return nothing when clicked.
+ */
+export function vocabulary({ take = "", tone = "" } = {}) {
+  const query = new URLSearchParams();
+  if (take) query.set("take", take);
+  if (tone) query.set("tone", tone);
+  const suffix = query.toString();
+  return request(`/api/vocabulary${suffix ? `?${suffix}` : ""}`);
+}
+
 export function chatStatus() {
   return request("/api/chat/status");
 }

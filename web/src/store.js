@@ -30,6 +30,15 @@ const state = {
   chat: { available: false, reason: "", messagesLeft: 0, busy: false, messages: [] },
   // The render job. status: idle | queued | running | done | failed
   render: { status: "idle", jobId: null, downloadUrl: null, mode: null },
+  /**
+   * What the library can actually say. Distinct words, most spoken first.
+   *
+   * Search-first is a memory test on footage you just added: you have to guess a word,
+   * and the transcriber does not always hear what you said. `scope` is a take id or ""
+   * for the whole library — after an ingest it points at the new take, so the words that
+   * just arrived are visible on their own rather than diluted into everything else.
+   */
+  vocabulary: { loading: false, scope: "", takes: [], words: [], truncated: false, error: "" },
   // Bringing your own footage. `available` is false when the deployment has no
   // transcriber, and saying so is better than a control that fails on use.
   upload: {
@@ -147,6 +156,12 @@ export function setUpload(upload) {
   state.upload = { ...state.upload, ...upload };
   notify();
   return state.upload;
+}
+
+export function setVocabulary(vocabulary) {
+  state.vocabulary = { ...state.vocabulary, ...vocabulary };
+  notify();
+  return state.vocabulary;
 }
 
 // --- Word-level selection ---

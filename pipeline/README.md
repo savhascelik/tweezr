@@ -28,7 +28,7 @@ media ──▶ transcribe.py ──▶ tone.py ──▶ ingest.py ──▶ Cl
 | `queries.py` | All of the SQL. No query strings are built anywhere else. |
 | `db.py` | ClickHouse connection, from the environment. |
 | `ingest.py` | Document → the `words` table. |
-| `search.py` | Line search, plus the line words behind the clickable transcript. |
+| `search.py` | Line search, the line words behind the clickable transcript, and the library's vocabulary. |
 | `test_queries.py` | Query correctness tests. |
 | `verify_cut.py` | Cut verification plus the local reference implementation. |
 | `schema.sql` | The `words` table. Column order matches `schema.py`. |
@@ -121,6 +121,25 @@ Turkish capitalises `ı` as `I`, which casefolds to `i`. Both break search on re
 transcripts and neither can be resolved without knowing the language of each word, so the
 search key folds them together. The `word` column keeps the original spelling, and that is
 what appears on screen.
+
+There is a third form alongside those two. `display_word()` is the search key's cleanup
+without its two case operations: `go.` becomes `go`, `"Asked,` becomes `Asked`, `İstanbul`
+stays `İstanbul`. The vocabulary panel needs it, because a chip is a search button — the text
+has to be presentable *and* has to normalise back to the key it was listed under, or clicking
+it would search for a different word than the one it shows. Doctests pin the property, and
+`test_queries.py` checks it across the whole corpus in both directions.
+
+### The vocabulary query
+
+`queries.VOCABULARY` is a `GROUP BY` over `word_norm`, which is the primary key's second
+column, so it comes off the index in one pass. It exists because a search-first interface is
+a memory test on footage you just added: you have to guess a word, and the transcriber does
+not always hear what you said.
+
+The display spelling is `max(word)`, not `any(word)`. `any()` may return a different variant
+on each run, so a panel that refreshes would shuffle `The` and `the` for no reason. Byte order
+puts the lowercase variant last among ASCII spellings, which is the one you want in nearly
+every case, and when only one spelling exists it is the only answer.
 
 ### Fatal problems and notes are not the same thing
 
