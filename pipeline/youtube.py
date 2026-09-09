@@ -11,6 +11,8 @@ Features:
 
 from __future__ import annotations
 
+import base64
+import os
 import re
 import shutil
 import subprocess
@@ -54,17 +56,68 @@ def sanitize_label(text: str, max_len: int = 32) -> str:
     return cleaned.upper() if cleaned else "YT_TAKE"
 
 
+def _get_cookie_file() -> str | None:
+    """Finds or decodes YouTube cookies if provided via file or environment."""
+    env_file = os.environ.get("YOUTUBE_COOKIES_FILE")
+    if env_file and Path(env_file).is_file():
+        return env_file
+
+    for candidate in [Path("cookies.txt"), Path("/tmp/cookies.txt"), Path("/app/cookies.txt")]:
+        if candidate.is_file():
+            return str(candidate.resolve())
+
+    raw_cookies = os.environ.get("YOUTUBE_COOKIES", "").strip()
+    if raw_cookies:
+        try:
+            decoded = base64.b64decode(raw_cookies).decode("utf-8", errors="ignore")
+            if "# Netscape" in decoded or "\t" in decoded:
+                raw_cookies = decoded
+        except Exception:
+            pass
+
+        target = Path(tempfile.gettempdir()) / "yt_runtime_cookies.txt"
+        target.write_text(raw_cookies, encoding="utf-8")
+        return str(target)
+
+    return None
+
+
+def _build_ydl_opts(extra_opts: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Builds base yt-dlp options configured to bypass bot detection on datacenter IPs."""
+    opts: dict[str, Any] = {
+        "quiet": True,
+        "no_warnings": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "mweb", "web"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    }
+    cookie_file = _get_cookie_file()
+    if cookie_file:
+        opts["cookiefile"] = cookie_file
+
+    if extra_opts:
+        opts.update(extra_opts)
+    return opts
+
+
 def get_info(url: str) -> dict[str, Any]:
     """Extracts metadata without downloading the media."""
     if not is_youtube_url(url):
         raise YouTubeError(f"Invalid YouTube URL: {url!r}")
 
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
+    opts = _build_ydl_opts({
         "skip_download": True,
         "extract_flat": False,
-    }
+    })
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
@@ -83,7 +136,13 @@ def get_info(url: str) -> dict[str, Any]:
                 "is_live": bool(info.get("is_live")),
             }
     except Exception as error:
-        raise YouTubeError(f"YouTube metadata extraction failed: {error}") from error
+        err_msg = str(error)
+        if "Sign in to confirm" in err_msg or "bot" in err_msg.lower():
+            err_msg += (
+                " (Cloud IP flagged by YouTube anti-bot. "
+                "Set YOUTUBE_COOKIES in Cloud Run or pass cookies.txt)"
+            )
+        raise YouTubeError(f"YouTube metadata extraction failed: {err_msg}") from error
 
 
 def download(
@@ -111,29 +170,15 @@ def download(
     with tempfile.TemporaryDirectory() as tmp_dir:
         staging_template = Path(tmp_dir) / "download.%(ext)s"
 
-        ydl_opts: dict[str, Any] = {
+        ydl_opts = _build_ydl_opts({
             "format": "bestvideo[ext=mp4][height<=720]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "ffmpeg_location": ffmpeg_bin,
             "outtmpl": str(staging_template),
             "merge_output_format": "mp4",
-            "quiet": True,
-            "no_warnings": True,
-        }
+        })
 
         duration = info.get("duration", 0.0)
         needs_trim = duration > max_duration_s > 0
-
-        # Attempt to use download_ranges if available in yt-dlp
-        if needs_trim:
-            try:
-                from yt_dlp.utils import download_range_func
-
-                ydl_opts["download_ranges"] = download_range_func(
-                    None, [(0, max_duration_s)]
-                )
-                ydl_opts["force_keyframes_at_cuts"] = True
-            except Exception:
-                pass
 
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -148,7 +193,7 @@ def download(
 
         staging_file = candidates[0]
 
-        # If it needs trimming and wasn't trimmed by download_ranges, trim with ffmpeg
+        # If it needs trimming, trim with ffmpeg
         if needs_trim:
             trimmed_staging = Path(tmp_dir) / "trimmed.mp4"
             cmd = [
