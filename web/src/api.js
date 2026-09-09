@@ -90,10 +90,10 @@ export function chatStatus() {
   return request("/api/chat/status");
 }
 
-export function sendChat(message) {
+export function sendChat(message, context = null) {
   return request("/api/chat", {
     method: "POST",
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, context }),
   });
 }
 

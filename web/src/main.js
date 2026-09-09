@@ -398,10 +398,22 @@ const actions = {
     store.appendChatMessage({ role: "user", text: message });
     store.setChat({ busy: true });
     try {
-      const result = await api.sendChat(message);
+      const { timeline, candidates } = store.getState();
+      const context = { timeline, candidates };
+      const result = await api.sendChat(message, context);
       const applied = store.applyAgentResult(result);
       if (applied.dropped.length) {
         console.warn("assistant returned unresolvable candidate ids", applied.dropped);
+      }
+
+      if (Array.isArray(result.actions)) {
+        for (const action of result.actions) {
+          try {
+            await actions.dispatchAgentAction(action);
+          } catch (actErr) {
+            console.error("agent action failed:", action, actErr);
+          }
+        }
       }
 
       store.appendChatMessage({
@@ -419,6 +431,74 @@ const actions = {
     }
   },
 
+  async dispatchAgentAction(action) {
+    if (!action || typeof action !== "object") return;
+    const type = action.type;
+
+    switch (type) {
+      case "tweeze_words": {
+        if (action.segment) {
+          store.appendToTimeline(action.segment);
+          store.setStatus("ok", t("status.tweezed", {
+            text: action.segment.text || action.text || "",
+            take: action.segment.take_id || "",
+            count: store.getState().timeline.length,
+          }));
+        }
+        break;
+      }
+      case "remove_segment": {
+        if (typeof action.index === "number") {
+          actions.remove(action.index);
+        }
+        break;
+      }
+      case "reorder_timeline": {
+        if (typeof action.from_index === "number" && typeof action.to_index === "number") {
+          actions.reorder(action.from_index, action.to_index);
+        }
+        break;
+      }
+      case "swap_take": {
+        const { candidates, timeline } = store.getState();
+        const cand = candidates.find((c) => c.id === action.candidate_id);
+        if (cand && typeof action.index === "number" && timeline[action.index]) {
+          actions.swap(action.index, cand);
+        }
+        break;
+      }
+      case "clear_timeline": {
+        actions.clear();
+        break;
+      }
+      case "preview_segment": {
+        const { candidates, timeline } = store.getState();
+        const cand =
+          candidates.find((c) => c.id === action.candidate_id) ||
+          (typeof action.timeline_index === "number" ? timeline[action.timeline_index] : null);
+        if (cand) {
+          actions.preview(cand);
+        }
+        break;
+      }
+      case "play_timeline": {
+        const startIdx = typeof action.start_index === "number" ? action.start_index : 0;
+        actions.jump(startIdx);
+        break;
+      }
+      case "stop_playback": {
+        actions.stop();
+        break;
+      }
+      case "request_render": {
+        await actions.render({ requestedBy: "agent" });
+        break;
+      }
+      default:
+        console.warn("Unhandled agent action:", action);
+    }
+  },
+
   /**
    * The single irreversible step, and the only one that spends credit.
    *
@@ -427,18 +507,24 @@ const actions = {
    * gate made literal.
    */
   async render({ requestedBy = "human" } = {}) {
-    const { timeline, session } = store.getState();
+    const { timeline, session, settings } = store.getState();
     if (!timeline.length) {
       store.setStatus("warn", t("status.emptyCut"));
       return { approved: false, reason: "the timeline is empty" };
     }
 
     const cost = session?.costs?.commit_render ?? 1;
+    const autoApprove = Boolean(settings?.autoApproveRender);
+
     const approved = await confirmRender({
       segments: timeline,
       cost,
       credits: session?.credits ?? 0,
       requestedBy,
+      autoApprove,
+      onTrustSession: (trust) => {
+        store.setAutoApproveRender(trust);
+      },
     });
 
     if (!approved) {
@@ -527,6 +613,7 @@ const ui = createUI(root, {
   onStop: actions.stop,
   onJump: actions.jump,
   onRender: () => actions.render().catch(() => {}),
+  onToggleAutoApprove: () => store.toggleAutoApproveRender(),
   onChat: (message) => actions.chat(message).catch(() => {}),
   onClearChat: () => store.clearChatMessages(),
   onUpload: (file, options) => actions.upload(file, options).catch(() => {}),

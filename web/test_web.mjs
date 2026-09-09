@@ -402,6 +402,26 @@ console.log("\n=== WebMCP tools ===");
     propose(candidates) {
       return store.setTimeline(candidates);
     },
+    remove(index) {
+      return store.removeFromTimeline(index);
+    },
+    reorder(from, to) {
+      return store.reorderTimeline(from, to);
+    },
+    swap(index, candidate) {
+      const next = [...store.getState().timeline];
+      next[index] = candidate;
+      return store.setTimeline(next);
+    },
+    clear() {
+      return store.clearTimeline();
+    },
+    jump(index) {
+      return index;
+    },
+    stop() {
+      return true;
+    },
     async play() {
       return true;
     },
@@ -424,14 +444,30 @@ console.log("\n=== WebMCP tools ===");
   const context = fakeModelContext();
   const install = await installTools({ actions, store, modelContext: context });
 
-  check("five tools registered", install.registered.length, 5);
+  check("fifteen tools registered", install.registered.length, 15);
   check(
     "tool names",
     [...context.tools.keys()].sort(),
-    ["commit_render", "find_line", "get_timeline_state", "preview_segment", "propose_cut"]
+    [
+      "clear_timeline",
+      "commit_render",
+      "find_line",
+      "get_library_stats",
+      "get_line_transcript",
+      "get_timeline_state",
+      "get_vocabulary",
+      "play_timeline",
+      "preview_segment",
+      "propose_cut",
+      "remove_segment",
+      "reorder_timeline",
+      "stop_playback",
+      "swap_take",
+      "tweeze_words",
+    ]
   );
   check("no registration rejected", context.rejected, []);
-  check("store state updated", store.getState().webmcp, { available: true, registered: 5 });
+  check("store state updated", store.getState().webmcp, { available: true, registered: 15 });
 
   const namePattern = /^[A-Za-z0-9_.-]{1,128}$/;
   checkThat(
@@ -548,6 +584,69 @@ console.log("\n=== WebMCP tools ===");
   );
   store.clearSelection();
 
+  // --- WebMCP execution tests for new tools ---
+  // tweeze_words
+  store.setLines({
+    "S01_T03:1": [
+      { word: "I", start_ms: 0, end_ms: 200, confidence: 0.95 },
+      { word: "never", start_ms: 200, end_ms: 500, confidence: 0.95 },
+      { word: "asked", start_ms: 500, end_ms: 900, confidence: 0.95 },
+      { word: "for", start_ms: 900, end_ms: 1100, confidence: 0.95 },
+      { word: "this", start_ms: 1100, end_ms: 1340, confidence: 0.95 },
+    ],
+  });
+  const tweezed = await context.tools.get("tweeze_words").execute({
+    candidate_id: "S01_T03:1:0",
+    phrase: "never asked",
+  });
+  check("tweeze_words appended to timeline", tweezed.segment.text, "never asked");
+  check("tweeze_words start_ms", tweezed.segment.start_ms, 200);
+  check("tweeze_words end_ms", tweezed.segment.end_ms, 900);
+
+  // reorder_timeline
+  store.setTimeline([
+    candidate("S01_T03:1:0", "calm", 0, 1340),
+    candidate("S01_T01:1:0", "tense", 0, 820),
+  ]);
+  const reordered = await context.tools.get("reorder_timeline").execute({
+    from_index: 0,
+    to_index: 1,
+  });
+  check("reordered via WebMCP", reordered.timeline[0].take, "S01_T01");
+
+  // swap_take
+  const swapped = await context.tools.get("swap_take").execute({
+    index: 0,
+    candidate_id: "S01_T03:1:0",
+  });
+  check("swapped take via WebMCP", swapped.swapped_segment.take, "S01_T03");
+
+  // remove_segment
+  const removedSeg = await context.tools.get("remove_segment").execute({ index: 0 });
+  check("removed segment via WebMCP", removedSeg.remaining_count, 1);
+
+  // clear_timeline
+  const cleared = await context.tools.get("clear_timeline").execute();
+  check("cleared timeline via WebMCP", cleared.segments_count, 0);
+
+  // play_timeline & stop_playback
+  store.setTimeline([candidate("S01_T03:1:0", "calm", 0, 1340)]);
+  const played = await context.tools.get("play_timeline").execute({ start_index: 0 });
+  check("played timeline via WebMCP", played.playing, true);
+  const stopped = await context.tools.get("stop_playback").execute();
+  check("stopped playback via WebMCP", stopped.playing, false);
+
+  // get_library_stats, get_vocabulary, get_line_transcript
+  store.patch({ library: { takes: 5, lines: 25, duration_seconds: 120, languages: ["en"] } });
+  const statsRes = await context.tools.get("get_library_stats").execute();
+  check("get_library_stats returned stats", statsRes.stats.takes, 5);
+
+  const vocabRes = await context.tools.get("get_vocabulary").execute();
+  check("get_vocabulary executed", Array.isArray(vocabRes.words), true);
+
+  const transcriptRes = await context.tools.get("get_line_transcript").execute({ take_id: "S01_T03" });
+  check("get_line_transcript returned lines", transcriptRes.lines.length >= 1, true);
+
   const previewed = await context.tools
     .get("preview_segment")
     .execute({ candidate_id: "S01_T03:1:0" });
@@ -570,7 +669,7 @@ console.log("\n=== WebMCP tools ===");
     after.includes("cost nothing"),
     after
   );
-  check("re-registration does not duplicate", context.tools.size, 5);
+  check("re-registration does not duplicate", context.tools.size, 15);
   check("no duplicate registration attempted", context.rejected, []);
   checkThat(
     "free tools untouched",

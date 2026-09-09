@@ -24,6 +24,8 @@
  * still sees a sentence.
  */
 
+import * as defaultApi from "./api.js";
+
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
 function resolveModelContext() {
@@ -76,7 +78,7 @@ function summarizeCandidate(candidate) {
  * The descriptions are the agent's only manual, so they describe WHEN to reach for each
  * tool rather than what it does.
  */
-function buildTools({ actions, store, costs, session }) {
+function buildTools({ actions, store, api = defaultApi, costs, session }) {
   return [
     {
       name: "find_line",
@@ -299,6 +301,412 @@ function buildTools({ actions, store, costs, session }) {
         };
       },
     },
+
+    {
+      name: "tweeze_words",
+      description:
+        "Tweeze out a specific sub-phrase or word range from a take with millisecond " +
+        "precision and add it to the timeline. This is Tweezr's signature capability: " +
+        "instead of taking an entire line, extract only the exact words you need." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          candidate_id: {
+            type: "string",
+            description: "The candidate id (e.g. 'take1:0:800') or take_id.",
+          },
+          word_indices: {
+            type: "array",
+            items: { type: "integer" },
+            description: "Optional 0-based word indices to extract from the line.",
+          },
+          phrase: {
+            type: "string",
+            description: "Optional sub-phrase to tweeze out of the line.",
+          },
+        },
+        required: ["candidate_id"],
+      },
+      execute: async ({ candidate_id, word_indices = [], phrase = "" } = {}) => {
+        const state = store.getState();
+        let candidate =
+          state.candidates.find((c) => c.id === candidate_id || c.take_id === candidate_id) ||
+          state.timeline.find((c) => c.id === candidate_id || c.take_id === candidate_id);
+
+        if (!candidate) {
+          throw new Error(`Unknown candidate '${candidate_id}'. Search with find_line first.`);
+        }
+
+        const key = store.lineKey(candidate);
+        let words = state.lines[key];
+        if (!words && api?.readLines) {
+          try {
+            const fetched = await api.readLines(candidate.take_id);
+            if (fetched?.lines) {
+              store.setLines(fetched.lines);
+              words = fetched.lines[key] || [];
+            }
+          } catch (_) {}
+        }
+
+        if (!words || !words.length) {
+          const timeline = store.appendToTimeline(candidate);
+          return {
+            summary: `Appended ${candidate.take_id} to timeline (${timeline.length} segments).`,
+            segment: summarizeCandidate(candidate),
+            timeline_count: timeline.length,
+          };
+        }
+
+        let startIdx = 0;
+        let endIdx = words.length - 1;
+
+        if (Array.isArray(word_indices) && word_indices.length > 0) {
+          const sorted = [...word_indices].sort((a, b) => a - b);
+          startIdx = Math.max(0, sorted[0]);
+          endIdx = Math.min(words.length - 1, sorted.at(-1));
+        } else if (phrase) {
+          const phraseNorm = phrase.toLowerCase().trim();
+          const lineWords = words.map((w) => (w.word || "").toLowerCase());
+          const joined = lineWords.join(" ");
+          const charPos = joined.indexOf(phraseNorm);
+          if (charPos >= 0) {
+            const before = joined.slice(0, charPos).trim();
+            const beforeCount = before ? before.split(/\s+/).length : 0;
+            const matchCount = phraseNorm.split(/\s+/).length;
+            startIdx = beforeCount;
+            endIdx = Math.min(words.length - 1, startIdx + matchCount - 1);
+          }
+        }
+
+        const picked = words.slice(startIdx, endIdx + 1);
+        if (!picked.length) {
+          throw new Error("Could not identify word boundaries for tweezing.");
+        }
+
+        const start_ms = picked[0].start_ms;
+        const end_ms = picked.at(-1).end_ms;
+        const tweezedText = picked.map((w) => w.word).join(" ");
+
+        const segment = {
+          ...candidate,
+          id: `${candidate.take_id}:${candidate.line_id}:${start_ms}`,
+          start_ms,
+          end_ms,
+          duration_ms: end_ms - start_ms,
+          text: tweezedText,
+          words: picked.length,
+        };
+
+        const timeline = store.appendToTimeline(segment);
+        return {
+          summary: `Tweezed "${tweezedText}" (${((end_ms - start_ms) / 1000).toFixed(2)}s) from ${candidate.take_id}. ${timeline.length} segments on timeline.`,
+          segment: summarizeCandidate(segment),
+          timeline_count: timeline.length,
+        };
+      },
+    },
+
+    {
+      name: "remove_segment",
+      description:
+        "Remove a clip from the editor's timeline by its 0-based position index." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          index: {
+            type: "integer",
+            description: "0-based position index of the clip on the timeline.",
+          },
+        },
+        required: ["index"],
+      },
+      execute: async ({ index } = {}) => {
+        const state = store.getState();
+        if (typeof index !== "number" || index < 0 || index >= state.timeline.length) {
+          throw new Error(`Invalid timeline index ${index}. Timeline has ${state.timeline.length} segments.`);
+        }
+        const removed = state.timeline[index];
+        const timeline = actions.remove ? actions.remove(index) : store.removeFromTimeline(index);
+        return {
+          summary: `Removed segment #${index + 1} (${removed.take_id}: "${removed.text || ""}"). ${timeline.length} segments remaining.`,
+          remaining_count: timeline.length,
+          removed_segment: summarizeCandidate(removed),
+        };
+      },
+    },
+
+    {
+      name: "reorder_timeline",
+      description:
+        "Move a clip from one position to another on the timeline to change story pacing." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          from_index: {
+            type: "integer",
+            description: "Current 0-based index of the clip.",
+          },
+          to_index: {
+            type: "integer",
+            description: "Target 0-based index to place the clip.",
+          },
+        },
+        required: ["from_index", "to_index"],
+      },
+      execute: async ({ from_index, to_index } = {}) => {
+        const state = store.getState();
+        if (from_index < 0 || from_index >= state.timeline.length || to_index < 0 || to_index >= state.timeline.length) {
+          throw new Error(`Indices out of range. Timeline has ${state.timeline.length} segments.`);
+        }
+        const timeline = actions.reorder ? actions.reorder(from_index, to_index) : store.reorderTimeline(from_index, to_index);
+        return {
+          summary: `Moved clip from position ${from_index + 1} to ${to_index + 1}. Timeline has ${timeline.length} segments.`,
+          timeline: timeline.map(summarizeCandidate),
+        };
+      },
+    },
+
+    {
+      name: "swap_take",
+      description:
+        "Swap an existing clip on the timeline with another reading/take while preserving position." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          index: {
+            type: "integer",
+            description: "0-based position index on the timeline to swap.",
+          },
+          candidate_id: {
+            type: "string",
+            description: "Candidate id from find_line to place at this position.",
+          },
+        },
+        required: ["index", "candidate_id"],
+      },
+      execute: async ({ index, candidate_id } = {}) => {
+        const state = store.getState();
+        if (index < 0 || index >= state.timeline.length) {
+          throw new Error(`Invalid timeline index ${index}. Timeline has ${state.timeline.length} segments.`);
+        }
+        const candidate = state.candidates.find((c) => c.id === candidate_id);
+        if (!candidate) {
+          throw new Error(`Unknown candidate id '${candidate_id}'. Available candidates come from find_line.`);
+        }
+        const timeline = actions.swap ? actions.swap(index, candidate) : (() => {
+          const next = [...state.timeline];
+          next[index] = candidate;
+          return store.setTimeline(next);
+        })();
+        return {
+          summary: `Swapped clip #${index + 1} with ${candidate.take_id} (${candidate.tone}).`,
+          swapped_segment: summarizeCandidate(candidate),
+          timeline: timeline.map(summarizeCandidate),
+        };
+      },
+    },
+
+    {
+      name: "clear_timeline",
+      description:
+        "Clear all clips from the editor's timeline." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      inputSchema: { type: "object", properties: {} },
+      execute: async () => {
+        if (actions.clear) actions.clear();
+        else store.clearTimeline();
+        return {
+          summary: "Timeline cleared. 0 segments remaining.",
+          segments_count: 0,
+        };
+      },
+    },
+
+    {
+      name: "play_timeline",
+      description:
+        "Play the timeline rough cut in the browser audio player from the start or a given index." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          start_index: {
+            type: "integer",
+            description: "Optional 0-based clip index to start playback from. Default 0.",
+          },
+        },
+      },
+      execute: async ({ start_index = 0 } = {}) => {
+        const { timeline } = store.getState();
+        if (!timeline.length) {
+          throw new Error("Timeline is empty. Propose or add clips before playing.");
+        }
+        if (actions.jump) actions.jump(start_index);
+        else if (actions.play) actions.play();
+        return {
+          summary: `Playing timeline cut (${timeline.length} segments) from segment #${start_index + 1}.`,
+          playing: true,
+          start_index,
+          total_segments: timeline.length,
+        };
+      },
+    },
+
+    {
+      name: "stop_playback",
+      description:
+        "Stop or pause currently playing audio in the browser." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      inputSchema: { type: "object", properties: {} },
+      execute: async () => {
+        if (actions.stop) actions.stop();
+        return {
+          summary: "Playback stopped.",
+          playing: false,
+        };
+      },
+    },
+
+    {
+      name: "get_library_stats",
+      description:
+        "Inspect overall footage inventory: total takes, total spoken lines, total duration." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: true, untrustedContentHint: false },
+      inputSchema: { type: "object", properties: {} },
+      execute: async () => {
+        let stats = null;
+        try {
+          if (api?.libraryStats) {
+            stats = await api.libraryStats();
+          }
+        } catch {
+          // fallback to store
+        }
+        const s = stats?.stats || store.getState().library || {};
+        return {
+          summary: `Library contains ${s.takes ?? 0} takes, ${s.lines ?? 0} lines, ` +
+            `${((s.duration_seconds ?? 0) / 60).toFixed(1)} minutes of footage across ` +
+            `${(s.languages ?? []).join(", ") || "various languages"}.`,
+          stats: s,
+        };
+      },
+    },
+
+    {
+      name: "get_vocabulary",
+      description:
+        "Get frequent words spoken across the library or within a specific take." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: true, untrustedContentHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          take: {
+            type: "string",
+            description: "Optional take_id to restrict vocabulary scope.",
+          },
+          tone: {
+            type: "string",
+            description: "Optional tone filter.",
+          },
+          limit: {
+            type: "integer",
+            description: "Maximum number of words to return. Default 60.",
+          },
+        },
+      },
+      execute: async ({ take = "", tone = "", limit = 60 } = {}) => {
+        let result = null;
+        try {
+          if (api?.vocabulary) {
+            result = await api.vocabulary({ take, tone, limit });
+          }
+        } catch {
+          // fallback to store
+        }
+        const words = result?.words ?? store.getState().vocabulary?.words ?? [];
+        const takes = result?.takes ?? store.getState().vocabulary?.takes ?? [];
+        return {
+          summary: `Retrieved ${words.length} vocabulary words for scope '${take || "all"}'.`,
+          take: result?.take ?? take,
+          words,
+          takes,
+          truncated: result?.truncated ?? false,
+        };
+      },
+    },
+
+    {
+      name: "get_line_transcript",
+      description:
+        "Retrieve exact word timings, millisecond intervals, and confidence scores for a take or line." +
+        creditNote(session, 0),
+      annotations: { readOnlyHint: true, untrustedContentHint: false },
+      inputSchema: {
+        type: "object",
+        properties: {
+          take_id: {
+            type: "string",
+            description: "The take id to inspect lines for.",
+          },
+          line_id: {
+            type: "integer",
+            description: "Optional specific line id within the take.",
+          },
+        },
+        required: ["take_id"],
+      },
+      execute: async ({ take_id, line_id = null } = {}) => {
+        let linesData = {};
+        try {
+          if (api?.readLines) {
+            const fetched = await api.readLines(take_id);
+            if (fetched?.lines) {
+              linesData = fetched.lines;
+              store.setLines(linesData);
+            }
+          }
+        } catch {
+          // fallback to store
+        }
+        if (!Object.keys(linesData).length) {
+          linesData = store.getState().lines ?? {};
+        }
+
+        let entries = Object.entries(linesData).filter(([k]) => k.startsWith(`${take_id}:`));
+        if (typeof line_id === "number") {
+          const key = `${take_id}:${line_id}`;
+          entries = entries.filter(([k]) => k === key);
+        }
+        const lines = entries.map(([key, words]) => ({
+          key,
+          take_id,
+          line_id: Number(key.split(":")[1]),
+          text: (words || []).map((w) => w.word).join(" "),
+          start_ms: words?.[0]?.start_ms ?? 0,
+          end_ms: words?.at(-1)?.end_ms ?? 0,
+          words,
+        }));
+        return {
+          summary: `Retrieved ${lines.length} line transcript(s) for ${take_id}.`,
+          take_id,
+          lines,
+        };
+      },
+    },
   ];
 }
 
@@ -307,8 +715,9 @@ function signature(tools) {
   return tools.map((tool) => `${tool.name}:${tool.description}`).join("|");
 }
 
-export async function installTools({ actions, store, modelContext = undefined }) {
+export async function installTools({ actions, store, api = null, modelContext = undefined }) {
   const context = modelContext ?? resolveModelContext();
+  const activeApi = api || defaultApi;
 
   if (!context || typeof context.registerTool !== "function") {
     // We do NOT install a polyfill. Faking agent support produces silently wrong
@@ -346,7 +755,7 @@ export async function installTools({ actions, store, modelContext = undefined })
       preview_segment: 0,
       commit_render: 1,
     };
-    const tools = buildTools({ actions, store, costs, session: state.session });
+    const tools = buildTools({ actions, store, api: activeApi, costs, session: state.session });
     const next = signature(tools);
     if (next === lastSignature) return;
 

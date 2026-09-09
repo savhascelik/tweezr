@@ -655,6 +655,7 @@ def render_file(job_id: str, request: Request, response: Response):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=config.MAX_CHAT_MESSAGE_CHARS)
+    context: dict | None = None
 
 
 @router.get("/chat/status")
@@ -704,7 +705,7 @@ async def chat(body: ChatRequest, request: Request, response: Response) -> dict:
         )
 
     try:
-        result = await agent.ask(session["id"], body.message)
+        result = await agent.ask(session["id"], body.message, context=body.context)
     except agent.AgentUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error))
     except Exception as error:

@@ -26,31 +26,31 @@ MODEL = os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
 APP_NAME = "cinema"
 
 INSTRUCTION = """
-You are the assistant inside a film and news editing tool. The person you are talking
-to is an editor working with a library of recorded takes.
+You are the AI co-editor assistant inside Tweezr, a film, video and news rough-cut assembly tool.
+The person you are collaborating with is an editor or director working with recorded dialogue takes.
 
-Your job is to find the right take and propose a rough cut. You do not render
-anything and you never claim to have produced a file.
+Your job is to search dialogue, tweeze exact words, edit the timeline, control playback, and propose rough cuts.
 
-How to work:
+Tools and capabilities:
+- Searching: Use find_line to locate lines. Use the tone filter (calm, tense, angry, whisper, shouted, neutral) when the editor asks about performance or emotion.
+- Library discovery: Use get_library_stats and get_vocabulary to discover available takes, speakers, and frequent words.
+- Transcripts: Use get_line_transcript to inspect exact word timings, indices, and confidence before tweezing.
+- Word Tweezing: Use tweeze_words to extract specific words from a line with millisecond precision and add them to the timeline (the namesake feature of Tweezr).
+- Timeline manipulation:
+  - Use get_timeline_state to see what is currently on the editor's timeline.
+  - Use assemble_proposal to place a sequence of candidate takes on the timeline.
+  - Use remove_segment to remove a specific clip by index.
+  - Use reorder_timeline to change clip order.
+  - Use swap_take to switch a take on the timeline for an alternative reading.
+  - Use clear_timeline to reset the timeline.
+- Playback & Audio:
+  - Use preview_segment to play a specific candidate or clip out loud in the browser.
+  - Use play_timeline to play the rough cut sequence.
+  - Use stop_playback to pause or stop playing audio.
+- Render & Export:
+  - Use request_render when the editor wants to render or export the cut. This prompts the editor's approval dialog.
 
-- Use find_line to locate a spoken line. If the editor describes a delivery rather
-  than exact words, for example "the calmer one" or "where she sounds angry", pass the
-  tone filter as well as the phrase.
-- When the editor asks for a cut, call find_line first and then assemble_proposal with
-  the ids you chose, in playback order.
-- After proposing, say which take you picked and why, naming the tone and the take id.
-  The proposal is visible on the editor's timeline with the source of every fragment,
-  so tell them they can change it before approving the render.
-- If a search finds nothing, call get_library_stats and say plainly whether the line is
-  absent or the library is empty. Do not invent takes.
-- Rendering is deliberately not yours to trigger. If asked to render, explain that the
-  editor approves it themselves, which is the point: the cut is reviewed before any
-  file exists.
-
-Keep replies short, concrete and in the editor's language. Name take ids and tones
-rather than describing them vaguely. Never state a timecode or a take you did not get
-from a tool.
+Keep replies concise, friendly, and in the editor's language (Turkish or English). Name take ids and tones. Never invent timestamps or takes you did not get from a tool.
 """.strip()
 
 
@@ -115,14 +115,17 @@ async def adk_session_id(user_id: str) -> str:
     return session.id
 
 
-async def ask(user_id: str, message: str) -> dict:
+async def ask(user_id: str, message: str, context: dict | None = None) -> dict:
     """Asks the agent a message. Returns the reply plus what the tools collected."""
     from google.genai import types
 
     active = runner()
     session_id = await adk_session_id(user_id)
 
-    # Per-request collector: the tools write candidates and the proposal into this
+    # Set client context for the request (timeline, candidates, etc.)
+    agent_tools.set_client_context(context)
+
+    # Per-request collector: the tools write candidates, proposal and actions into this
     collected = agent_tools.new_collection()
 
     reply_parts: list[str] = []
@@ -146,4 +149,5 @@ async def ask(user_id: str, message: str) -> dict:
         "tool_calls": collected["tool_calls"],
         "candidates": collected["candidates"],
         "proposal": collected["proposal"],
+        "actions": collected.get("actions", []),
     }

@@ -54,6 +54,9 @@ const state = {
     error: "",
     result: null,
   },
+  settings: {
+    autoApproveRender: false,
+  },
 };
 
 const listeners = new Set();
@@ -162,6 +165,23 @@ export function setVocabulary(vocabulary) {
   state.vocabulary = { ...state.vocabulary, ...vocabulary };
   notify();
   return state.vocabulary;
+}
+
+export function setSettings(settings) {
+  state.settings = { ...state.settings, ...settings };
+  notify();
+  return state.settings;
+}
+
+export function setAutoApproveRender(enabled) {
+  state.settings = { ...state.settings, autoApproveRender: Boolean(enabled) };
+  notify();
+  return state.settings.autoApproveRender;
+}
+
+export function toggleAutoApproveRender() {
+  const current = Boolean(state.settings?.autoApproveRender);
+  return setAutoApproveRender(!current);
 }
 
 // --- Word-level selection ---

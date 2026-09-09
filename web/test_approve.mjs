@@ -322,6 +322,30 @@ async function main() {
     setLocale("en");
   }
 
+  console.log("\n=== auto-approve & trust mode ===");
+  {
+    // When autoApprove is true, the dialog never opens and resolves true immediately
+    const doc = createFakeDocument();
+    const result = await confirmRender({ segments: SEGMENTS, autoApprove: true, doc });
+    check("autoApprove resolves immediately true", result, true);
+    check("no modal added to document on autoApprove", doc.body.children.length, 0);
+
+    // When user checks trust session checkbox and approves, onTrustSession is triggered
+    let trusted = false;
+    const pendingTrust = confirmRender({
+      segments: SEGMENTS,
+      doc,
+      onTrustSession: (val) => { trusted = val; },
+    });
+    const { root } = shadowOf(doc);
+    const trustInput = find(root, (node) => node.tag === "input" && node.attributes?.id === "trust-session-render");
+    checkThat("trust checkbox is rendered", Boolean(trustInput));
+    trustInput.checked = true;
+    find(root, (node) => node.textContent === "Approve and render").click();
+    check("approving resolved true", await pendingTrust, true);
+    check("onTrustSession was called with true", trusted, true);
+  }
+
   const passed = results.filter(Boolean).length;
   console.log(`\n${passed}/${results.length} tests passed`);
   process.exit(passed === results.length ? 0 : 1);

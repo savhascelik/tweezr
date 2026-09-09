@@ -218,6 +218,17 @@ export function createUI(root, handlers) {
     nodes.creditsChip,
   ]);
 
+  nodes.autoApproveLabel = el("span", { class: "chip-value" });
+  nodes.autoApproveChip = el(
+    "button",
+    {
+      class: "chip chip-auto-approve",
+      type: "button",
+      onClick: () => handlers.onToggleAutoApprove?.(),
+    },
+    [icon("check"), nodes.autoApproveLabel]
+  );
+
   nodes.locale = el("select", {
     class: "locale",
     onChange: (event) => setLocale(event.target.value),
@@ -242,6 +253,7 @@ export function createUI(root, handlers) {
         el("span", { class: "chip chip-library" }, [icon("film"), nodes.libraryChip]),
         nodes.webmcpWrap,
         nodes.creditsWrap,
+        nodes.autoApproveChip,
         nodes.assistantToggle,
         nodes.locale,
       ]),
@@ -1676,6 +1688,13 @@ export function createUI(root, handlers) {
       ? t("webmcp.on", { count: state.webmcp.registered })
       : t("webmcp.off");
     nodes.webmcpWrap.classList.toggle("is-on", state.webmcp.available);
+
+    const isAutoApprove = Boolean(state.settings?.autoApproveRender);
+    nodes.autoApproveLabel.textContent = isAutoApprove
+      ? t("settings.autoApproveOn")
+      : t("settings.autoApproveOff");
+    nodes.autoApproveChip.title = t("settings.autoApprove");
+    nodes.autoApproveChip.classList.toggle("is-on", isAutoApprove);
 
     nodes.status.textContent = state.status.message;
     nodes.status.className = `status status-${state.status.kind}`;

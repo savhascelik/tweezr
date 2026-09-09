@@ -72,6 +72,13 @@ const STYLE = `
     margin-top: 0.5rem; padding: 0.75rem 1rem; border-radius: 1rem;
     background: #d2eac1; color: #0e2006; font-size: 0.875rem; font-weight: 600;
   }
+  .trust-label {
+    display: flex; align-items: center; gap: 0.5rem; margin-top: 0.75rem;
+    font-size: 0.8125rem; color: #5a4138; cursor: pointer; user-select: none;
+  }
+  .trust-check {
+    cursor: pointer; width: 1.05rem; height: 1.05rem; accent-color: #a33900;
+  }
   button {
     font: inherit; font-size: 0.875rem; font-weight: 600;
     padding: 0.5rem 1.5rem; border-radius: 9999px;
@@ -123,7 +130,12 @@ export function confirmRender({
   requestedBy = "human",
   doc = typeof document !== "undefined" ? document : null,
   autoDeclineMs = AUTO_DECLINE_MS,
+  autoApprove = false,
+  onTrustSession = null,
 }) {
+  if (autoApprove) {
+    return Promise.resolve(true);
+  }
   if (!doc) return Promise.resolve(false);
 
   const host = doc.createElement("div");
@@ -171,6 +183,19 @@ export function confirmRender({
   });
 
   const heading = el(doc, "h2", { id: "render-title", text: t("approve.title") });
+  const trustCheckbox = el(doc, "input", {
+    type: "checkbox",
+    id: "trust-session-render",
+    class: "trust-check",
+  });
+  const trustLabel = el(doc, "label", {
+    for: "trust-session-render",
+    class: "trust-label",
+  }, [
+    trustCheckbox,
+    el(doc, "span", { text: t("approve.trustSession") }),
+  ]);
+
   const body = el(doc, "div", { class: "body" }, [
     list,
     el(doc, "p", {
@@ -180,6 +205,7 @@ export function confirmRender({
     requestedBy === "agent"
       ? el(doc, "p", { class: "who", text: t("approve.agentRequested") })
       : null,
+    trustLabel,
   ]);
 
   const sheet = el(doc, "div", { class: "sheet", role: "document" }, [
@@ -230,7 +256,7 @@ export function confirmRender({
       }
       // Focus trap: Tab must not leave the dialog for the page behind it
       if (event.key === "Tab") {
-        const focusable = [cancel, approve];
+        const focusable = [trustCheckbox, cancel, approve];
         const active = root.activeElement;
         const index = focusable.indexOf(active);
         const next = event.shiftKey
@@ -242,7 +268,16 @@ export function confirmRender({
     }
 
     cancel.addEventListener("click", () => close(false));
-    approve.addEventListener("click", () => close(true));
+    approve.addEventListener("click", () => {
+      if (trustCheckbox.checked && typeof onTrustSession === "function") {
+        try {
+          onTrustSession(true);
+        } catch (err) {
+          console.error("onTrustSession failed", err);
+        }
+      }
+      close(true);
+    });
     doc.addEventListener("keydown", onKeyDown, true);
 
     // If the agent asks and the human walks away, the tool's promise must not wait

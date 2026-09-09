@@ -312,6 +312,25 @@ ul {
   color: var(--on-error-container);
 }
 
+.chip-auto-approve {
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-low);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chip-auto-approve:hover {
+  background: var(--surface-high);
+  color: var(--on-surface);
+}
+
+.chip-auto-approve.is-on {
+  background: var(--secondary-container);
+  border-color: var(--secondary);
+  color: var(--on-secondary-container);
+}
+
 .locale {
   appearance: none;
   padding: 0.3rem 1.6rem 0.3rem var(--s-sm);
