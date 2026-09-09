@@ -34,3 +34,28 @@ ORDER BY (project_id, word_norm, start_ms);
 -- WHERE project_id = 'demo' AND word_norm = 'asked' AND tone = 'calm'
 -- ORDER BY confidence DESC, start_ms
 -- LIMIT 20;
+
+-- The ClickHouse lines table. One row per spoken line / dialogue fragment.
+-- Used for semantic vector search (cosineDistance) and multi-token queries.
+-- Column order matches schema.py LINE_COLUMNS exactly.
+
+CREATE TABLE IF NOT EXISTS lines
+(
+    project_id   LowCardinality(String),
+    take_id      LowCardinality(String),
+    source_url   String,
+    scene        LowCardinality(String),
+    camera       LowCardinality(String),
+    speaker      LowCardinality(String),
+    line_id      UInt32,
+    text         String,
+    start_ms     UInt32,
+    end_ms       UInt32,
+    tone         Enum8('neutral' = 0, 'calm' = 1, 'tense' = 2,
+                       'angry' = 3, 'whisper' = 4, 'shouted' = 5),
+    tone_score   Float32,
+    embedding    Array(Float32)
+)
+ENGINE = MergeTree
+ORDER BY (project_id, take_id, line_id);
+

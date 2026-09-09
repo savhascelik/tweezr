@@ -49,6 +49,23 @@ COLUMNS = [
     "tone_score",
 ]
 
+# ClickHouse lines table column order for semantic embeddings and multi-token retrieval
+LINE_COLUMNS = [
+    "project_id",
+    "take_id",
+    "source_url",
+    "scene",
+    "camera",
+    "speaker",
+    "line_id",
+    "text",
+    "start_ms",
+    "end_ms",
+    "tone",
+    "tone_score",
+    "embedding",
+]
+
 TONES = ("neutral", "calm", "tense", "angry", "whisper", "shouted")
 
 # Punctuation stripped from the edges of a word. An apostrophe INSIDE a word survives
@@ -172,6 +189,58 @@ def flatten_rows(doc: dict) -> list[tuple]:
                         float(line.get("tone_score", 0.0)),
                     )
                 )
+    return rows
+
+
+def flatten_line_rows(
+    doc: dict, embeddings: dict[tuple[str, int], list[float]] | None = None
+) -> list[tuple]:
+    """Ingest document -> ClickHouse lines rows, in LINE_COLUMNS order."""
+    project_id = doc["project_id"]
+    embeddings = embeddings or {}
+    rows: list[tuple] = []
+
+    for take in doc["takes"]:
+        take_id = take["take_id"]
+        for line in take["lines"]:
+            tone = line.get("tone") or "neutral"
+            if tone not in TONES:
+                raise ValueError(
+                    f"{take_id} line {line['line_id']}: unknown tone {tone!r}. "
+                    f"Allowed: {TONES}"
+                )
+            words = line.get("words", [])
+            start_ms = (
+                int(words[0]["start_ms"]) if words else int(line.get("start_ms", 0))
+            )
+            end_ms = (
+                int(words[-1]["end_ms"]) if words else int(line.get("end_ms", 0))
+            )
+            text = line.get("text") or " ".join(w["word"] for w in words)
+
+            line_emb = (
+                line.get("embedding")
+                or embeddings.get((take_id, int(line["line_id"])))
+                or []
+            )
+
+            rows.append(
+                (
+                    project_id,
+                    take_id,
+                    take.get("source_url", ""),
+                    take.get("scene", ""),
+                    take.get("camera", ""),
+                    take.get("speaker", ""),
+                    int(line["line_id"]),
+                    text,
+                    start_ms,
+                    end_ms,
+                    tone,
+                    float(line.get("tone_score", 0.0)),
+                    [float(x) for x in line_emb],
+                )
+            )
     return rows
 
 

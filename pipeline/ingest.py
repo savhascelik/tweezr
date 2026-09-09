@@ -14,11 +14,16 @@ import json
 import sys
 from pathlib import Path
 
-from . import db, queries, schema
+from . import db, embed, queries, schema
 
 
-def ingest(client, doc: dict, replace: bool = False) -> int:
-    """Writes the document and returns how many rows were written."""
+def ingest(
+    client,
+    doc: dict,
+    replace: bool = False,
+    compute_embeddings: bool = True,
+) -> int:
+    """Writes the document and returns how many word rows were written."""
     problems = schema.validate(doc)
     if problems:
         raise ValueError(
@@ -30,12 +35,28 @@ def ingest(client, doc: dict, replace: bool = False) -> int:
     if not rows:
         return 0
 
+    # Extract or compute embeddings for lines if available
+    embeddings_map = {}
+    if compute_embeddings and embed.available():
+        for take in doc.get("takes", []):
+            take_id = take["take_id"]
+            take_embs = embed.embed_take_lines(take)
+            for lid, vec in take_embs.items():
+                embeddings_map[(take_id, lid)] = vec
+
+    line_rows = schema.flatten_line_rows(doc, embeddings=embeddings_map)
+
     if replace:
         client.command(
             queries.DROP_PROJECT, parameters={"project": doc["project_id"]}
         )
+        client.command(
+            queries.DROP_PROJECT_LINES, parameters={"project": doc["project_id"]}
+        )
 
     client.insert("words", rows, column_names=schema.COLUMNS)
+    if line_rows:
+        client.insert("lines", line_rows, column_names=schema.LINE_COLUMNS)
     return len(rows)
 
 

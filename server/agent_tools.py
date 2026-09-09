@@ -80,13 +80,16 @@ def find_line(phrase: str, tone: str = "") -> dict:
         }
 
     try:
-        matches = search.phrase_search(ch.client(), config.DEMO_PROJECT, phrase, tone)
+        matches = search.hybrid_search(
+            ch.client(), config.DEMO_PROJECT, phrase, tone, limit=config.MAX_PHRASE_WORDS
+        )
     except Exception as error:
         ch.drop()
         return {"error": f"library search failed: {error}"}
 
-    matches.sort(key=lambda m: (-float(m["tone_score"]), m["take_id"], m["start_ms"]))
-    candidates = [_candidate(match, rank) for rank, match in enumerate(matches, start=1)]
+    candidates = [
+        _candidate(match, rank) for rank, match in enumerate(matches, start=1)
+    ]
 
     # The page puts these in the store, so the user sees what the agent found
     collection()["candidates"] = candidates

@@ -17,7 +17,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import db, queries, schema
+from . import db, embed, queries, schema
 
 
 def as_projects(project: str | list[str] | tuple[str, ...]) -> list[str]:
@@ -44,6 +44,111 @@ def phrase_search(
     )
     rows = [dict(zip(result.column_names, row)) for row in result.result_rows]
     return queries.expand_phrase_rows(rows)
+
+
+def token_search(
+    client, project: str | list[str], phrase: str, tone: str = "", limit: int = 50
+) -> list[dict]:
+    """Matches lines containing any or all of the search tokens."""
+    words = schema.normalize_phrase(phrase)
+    if not words:
+        return []
+    result = client.query(
+        queries.TOKEN_MATCHES,
+        parameters={
+            "projects": as_projects(project),
+            "phrase": words,
+            "tone": tone,
+            "limit": int(limit),
+        },
+    )
+    rows = [dict(zip(result.column_names, row)) for row in result.result_rows]
+    return queries.expand_token_rows(rows, len(words))
+
+
+def semantic_search(
+    client, project: str | list[str], phrase: str, tone: str = "", limit: int = 20
+) -> list[dict]:
+    """Matches lines by cosine similarity of text embeddings."""
+    if not embed.available():
+        return []
+    query_vec = embed.embed_text(phrase)
+    if not query_vec:
+        return []
+    result = client.query(
+        queries.SEMANTIC_MATCHES,
+        parameters={
+            "projects": as_projects(project),
+            "query_vec": query_vec,
+            "tone": tone,
+            "limit": int(limit),
+        },
+    )
+    rows = [dict(zip(result.column_names, row)) for row in result.result_rows]
+    return queries.expand_semantic_rows(rows)
+
+
+def hybrid_search(
+    client,
+    project: str | list[str],
+    phrase: str,
+    tone: str = "",
+    limit: int = 50,
+) -> list[dict]:
+    """Blends exact phrase, token co-occurrence and semantic vector matches.
+
+    Rank hierarchy:
+      1. Exact phrase matches (score ~ 1.0)
+      2. Multi-token / co-occurrence matches (score ~ 0.7 - 0.9)
+      3. Semantic embedding matches (score ~ 0.5 - 0.8)
+    """
+    seen_keys: set[tuple[str, int]] = set()
+    merged: list[dict] = []
+
+    # 1. Exact phrase search
+    exact_matches = phrase_search(client, project, phrase, tone)
+    for m in exact_matches:
+        key = (m["take_id"], m["line_id"])
+        seen_keys.add(key)
+        m["match_type"] = "exact"
+        m["rank_score"] = 1.0 + float(m.get("tone_score", 0.0)) * 0.1
+        merged.append(m)
+
+    # 2. Token co-occurrence search
+    token_matches = token_search(client, project, phrase, tone, limit=limit)
+    for m in token_matches:
+        key = (m["take_id"], m["line_id"])
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        m["rank_score"] = 0.7 * float(m.get("score", 0.5)) + float(
+            m.get("tone_score", 0.0)
+        ) * 0.1
+        merged.append(m)
+
+    # 3. Semantic vector search (if embedding available)
+    semantic_matches = semantic_search(client, project, phrase, tone, limit=limit)
+    for m in semantic_matches:
+        key = (m["take_id"], m["line_id"])
+        if key in seen_keys:
+            continue
+        if float(m.get("score", 0.0)) < 0.45:
+            continue
+        seen_keys.add(key)
+        m["rank_score"] = 0.6 * float(m.get("score", 0.0)) + float(
+            m.get("tone_score", 0.0)
+        ) * 0.1
+        merged.append(m)
+
+    merged.sort(
+        key=lambda m: (
+            -float(m.get("rank_score", 0.0)),
+            -float(m.get("tone_score", 0.0)),
+            m["take_id"],
+            m["start_ms"],
+        )
+    )
+    return merged[:limit]
 
 
 def line_words(

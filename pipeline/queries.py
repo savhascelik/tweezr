@@ -98,6 +98,65 @@ HAVING length(hits) > 0
 ORDER BY take_id, line_id
 """
 
+# Token co-occurrence search: matches lines containing one or more search tokens.
+TOKEN_MATCHES = """
+WITH
+    {phrase:Array(String)} AS phrase,
+    length(phrase) AS n
+SELECT
+    take_id,
+    line_id,
+    any(camera)     AS line_camera,
+    any(speaker)    AS line_speaker,
+    any(scene)      AS line_scene,
+    any(tone)       AS line_tone,
+    any(tone_score) AS line_tone_score,
+    any(source_url) AS line_source_url,
+    arraySort(groupArray((start_ms, end_ms, word_norm, word))) AS ordered,
+    arrayMap(t -> tupleElement(t, 3), ordered) AS norms,
+    arrayIntersect(norms, phrase) AS matched_tokens,
+    length(matched_tokens) AS token_count,
+    arrayMin(arrayMap(t -> tupleElement(t, 1), arrayFilter(t -> has(phrase, tupleElement(t, 3)), ordered))) AS hit_start,
+    arrayMax(arrayMap(t -> tupleElement(t, 2), arrayFilter(t -> has(phrase, tupleElement(t, 3)), ordered))) AS hit_end,
+    arrayStringConcat(arrayMap(t -> tupleElement(t, 4), ordered), ' ') AS full_text
+FROM words
+WHERE project_id IN {projects:Array(String)}
+  AND (take_id, line_id) IN (
+      SELECT take_id, line_id
+      FROM words
+      WHERE project_id IN {projects:Array(String)}
+        AND has(phrase, word_norm)
+        AND ({tone:String} = '' OR tone = {tone:String})
+  )
+GROUP BY take_id, line_id
+HAVING token_count > 0
+ORDER BY token_count DESC, line_tone_score DESC, take_id, line_id
+LIMIT {limit:UInt32}
+"""
+
+# Semantic vector similarity search over dialogue lines.
+SEMANTIC_MATCHES = """
+SELECT
+    take_id,
+    line_id,
+    camera,
+    speaker,
+    scene,
+    tone,
+    tone_score,
+    source_url,
+    text,
+    start_ms,
+    end_ms,
+    1.0 - cosineDistance(embedding, {query_vec:Array(Float32)}) AS semantic_score
+FROM lines
+WHERE project_id IN {projects:Array(String)}
+  AND length(embedding) > 0
+  AND ({tone:String} = '' OR tone = {tone:String})
+ORDER BY semantic_score DESC
+LIMIT {limit:UInt32}
+"""
+
 # Every word of specific lines, in order. What makes word-level tweezing possible.
 #
 # Phrase search returns the matched range only, so the interface could show the phrase
@@ -220,6 +279,10 @@ DROP_PROJECT = """
 ALTER TABLE words DELETE WHERE project_id = {project:String}
 """
 
+DROP_PROJECT_LINES = """
+ALTER TABLE lines DELETE WHERE project_id = {project:String}
+"""
+
 
 def expand_phrase_rows(rows: list[dict]) -> list[dict]:
     """Unpacks PHRASE_MATCHES' per-line arrays into individual matches.
@@ -236,18 +299,70 @@ def expand_phrase_rows(rows: list[dict]) -> list[dict]:
                 {
                     "take_id": row["take_id"],
                     "line_id": row["line_id"],
-                    # Prefixed with line_ in the SQL because an alias must not shadow a
-                    # column name. The names exposed outwards stay plain.
                     "camera": row["line_camera"],
                     "speaker": row["line_speaker"],
                     "scene": row["line_scene"],
                     "tone": row["line_tone"],
-                    "tone_score": row["line_tone_score"],
+                    "tone_score": float(row["line_tone_score"]),
                     "source_url": row["line_source_url"],
                     "start_ms": int(start_ms),
                     "end_ms": int(end_ms),
                     "text": text,
+                    "match_type": "exact",
                 }
             )
     matches.sort(key=lambda m: (m["take_id"], m["start_ms"]))
     return matches
+
+
+def expand_token_rows(rows: list[dict], query_len: int) -> list[dict]:
+    """Unpacks TOKEN_MATCHES rows into candidate match records."""
+    matches: list[dict] = []
+    for row in rows:
+        token_count = int(row.get("token_count", 0))
+        match_ratio = round(min(1.0, token_count / max(1, query_len)), 3)
+        matches.append(
+            {
+                "take_id": row["take_id"],
+                "line_id": row["line_id"],
+                "camera": row["line_camera"],
+                "speaker": row["line_speaker"],
+                "scene": row["line_scene"],
+                "tone": row["line_tone"],
+                "tone_score": float(row["line_tone_score"]),
+                "source_url": row["line_source_url"],
+                "start_ms": int(row["hit_start"]),
+                "end_ms": int(row["hit_end"]),
+                "text": row["full_text"],
+                "match_type": "tokens",
+                "token_count": token_count,
+                "score": match_ratio,
+            }
+        )
+    return matches
+
+
+def expand_semantic_rows(rows: list[dict]) -> list[dict]:
+    """Unpacks SEMANTIC_MATCHES rows into candidate match records."""
+    matches: list[dict] = []
+    for row in rows:
+        score = round(float(row.get("semantic_score", 0.0)), 3)
+        matches.append(
+            {
+                "take_id": row["take_id"],
+                "line_id": row["line_id"],
+                "camera": row["camera"],
+                "speaker": row["speaker"],
+                "scene": row["scene"],
+                "tone": row["tone"],
+                "tone_score": float(row["tone_score"]),
+                "source_url": row["source_url"],
+                "start_ms": int(row["start_ms"]),
+                "end_ms": int(row["end_ms"]),
+                "text": row["text"],
+                "match_type": "semantic",
+                "score": score,
+            }
+        )
+    return matches
+

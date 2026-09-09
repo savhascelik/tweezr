@@ -76,6 +76,7 @@ def to_candidate(match: dict, rank: int) -> dict:
         "end_ms": match["end_ms"],
         "duration_ms": match["end_ms"] - match["start_ms"],
         "text": match["text"],
+        "match_type": match.get("match_type", "exact"),
         # provenance, so a fragment can be traced back to its source
         "source_url": match["source_url"],
         "media_url": media_url(match["source_url"]),
@@ -186,13 +187,13 @@ def find_line(body: FindLineRequest, request: Request, response: Response) -> di
         )
 
     try:
-        matches = search.phrase_search(clickhouse(), projects, body.phrase, tone)
+        matches = search.hybrid_search(
+            clickhouse(), projects, body.phrase, tone, limit=body.limit
+        )
     except Exception as error:
         drop_client()
         raise HTTPException(status_code=503, detail=f"Search failed: {error}")
 
-    # Product logic: best example first. On a tie, the more confident alignment first.
-    matches.sort(key=lambda m: (-float(m["tone_score"]), m["take_id"], m["start_ms"]))
     candidates = [
         to_candidate(match, rank)
         for rank, match in enumerate(matches[: body.limit], start=1)
