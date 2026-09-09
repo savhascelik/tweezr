@@ -113,6 +113,27 @@ const actions = {
     return timeline;
   },
 
+  /** Adds the sentence with the picked words cut out. */
+  excludeSelection() {
+    const segment = store.selectionSegment();
+    const parts = store.excludeSelectionSegments();
+    if (!parts.length) return null;
+    let timeline = store.getState().timeline;
+    for (const part of parts) {
+      timeline = store.appendToTimeline(part);
+    }
+    store.setStatus(
+      "ok",
+      t("status.excluded", {
+        text: segment ? segment.text : "",
+        take: parts[0].take_id,
+        count: timeline.length,
+      })
+    );
+    store.clearSelection();
+    return timeline;
+  },
+
   propose(candidates) {
     const timeline = store.setTimeline(candidates);
     store.setStatus("ok", t("status.proposed", { count: timeline.length }));
@@ -604,6 +625,7 @@ const ui = createUI(root, {
   onSelectWord: actions.selectWord,
   onAddSelection: actions.addSelection,
   onClearSelection: () => store.clearSelection(),
+  onExcludeSelection: () => actions.excludeSelection(),
   onPreview: actions.preview,
   onRemove: actions.remove,
   onReorder: actions.reorder,

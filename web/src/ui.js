@@ -1047,6 +1047,50 @@ export function createUI(root, handlers) {
     const segment = selectionSegmentOf(state, selection);
     if (!segment) return null;
 
+    const candidate = state.candidates?.find(
+      (c) => `${c.take_id}:${c.line_id}` === selection.key
+    );
+
+    const actionButtons = [
+      el("button", {
+        type: "button",
+        class: "btn btn-quiet btn-sm",
+        text: t("pick.clear"),
+        onClick: () => handlers.onClearSelection(),
+      }),
+    ];
+
+    if (candidate && handlers.onAdd) {
+      actionButtons.push(
+        el("button", {
+          type: "button",
+          class: "btn btn-soft btn-sm",
+          text: t("pick.addFullLine"),
+          onClick: () => handlers.onAdd(candidate),
+        })
+      );
+    }
+
+    if (handlers.onExcludeSelection) {
+      actionButtons.push(
+        el("button", {
+          type: "button",
+          class: "btn btn-soft btn-sm",
+          text: t("pick.excludeAndAdd"),
+          onClick: () => handlers.onExcludeSelection(),
+        })
+      );
+    }
+
+    actionButtons.push(
+      el("button", {
+        type: "button",
+        class: "btn btn-primary btn-sm",
+        text: t("pick.add"),
+        onClick: () => handlers.onAddSelection(),
+      })
+    );
+
     return el("div", { class: "picked" }, [
       el("span", { class: "picked-label" }, [
         icon("tweezers", "icon-sm"),
@@ -1058,20 +1102,7 @@ export function createUI(root, handlers) {
         }),
       ]),
       el("span", { class: "picked-text", text: segment.text }),
-      el("div", { class: "take-actions" }, [
-        el("button", {
-          type: "button",
-          class: "btn btn-quiet btn-sm",
-          text: t("pick.clear"),
-          onClick: () => handlers.onClearSelection(),
-        }),
-        el("button", {
-          type: "button",
-          class: "btn btn-primary btn-sm",
-          text: t("pick.add"),
-          onClick: () => handlers.onAddSelection(),
-        }),
-      ]),
+      el("div", { class: "take-actions" }, actionButtons),
     ]);
   }
 

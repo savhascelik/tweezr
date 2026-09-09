@@ -1095,6 +1095,22 @@ ul {
   display: flex;
   gap: var(--s-xs);
   align-items: center;
+  flex-wrap: wrap;
+}
+
+.picked .take-actions {
+  gap: var(--s-2xs);
+}
+
+.picked .btn-soft {
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.picked .btn-soft:hover {
+  background: rgba(255, 255, 255, 0.95);
 }
 
 /* --- Delivery badges --- */

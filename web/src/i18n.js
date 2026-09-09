@@ -55,6 +55,8 @@ const CATALOGUE = {
     "pick.summary": "{words} words picked · {duration}",
     "pick.clear": "Clear",
     "pick.add": "Tweeze these words",
+    "pick.addFullLine": "Add full sentence",
+    "pick.excludeAndAdd": "Cut out selected words",
 
     "candidates.empty": "Search a line and the takes that contain it show up here.",
     "candidates.preview": "Preview",
@@ -177,6 +179,7 @@ const CATALOGUE = {
     "status.ingested": "{take} is in the library: {lines} lines, {language}. Search it now.",
     "status.picked": "{words} words: \u201c{text}\u201d, {duration}. Playing that range only.",
     "status.tweezed": "\u201c{text}\u201d tweezed out of {take}. {count} segments, nothing rendered.",
+    "status.excluded": "\u201c{text}\u201d cut out of {take}. {count} segments, nothing rendered.",
     "status.proposed": "A {count}-segment proposal is ready. Nothing was rendered.",
     "status.removed": "Segment removed. {count} left.",
     "status.reordered": "Order changed. {count} segments, still nothing rendered.",
@@ -252,6 +255,8 @@ const CATALOGUE = {
     "pick.summary": "{words} kelime seçildi · {duration}",
     "pick.clear": "Temizle",
     "pick.add": "Bu kelimeleri cımbızla",
+    "pick.addFullLine": "Tüm cümleyi ekle",
+    "pick.excludeAndAdd": "Bu kelimeleri çıkart",
 
     "candidates.empty": "Bir replik ara, onu içeren take'ler burada listelenir.",
     "candidates.preview": "Önizle",
@@ -374,6 +379,7 @@ const CATALOGUE = {
     "status.ingested": "{take} kütüphaneye girdi: {lines} satır, {language}. Şimdi ara.",
     "status.picked": "{words} kelime: \u201c{text}\u201d, {duration}. Sadece o aralık çalıyor.",
     "status.tweezed": "\u201c{text}\u201d {take} içinden cımbızlandı. {count} parça, render edilmedi.",
+    "status.excluded": "\u201c{text}\u201d {take} içinden çıkartıldı. {count} parça, render edilmedi.",
     "status.proposed": "{count} parçalık öneri hazır. Render edilmedi.",
     "status.removed": "Parça çıkarıldı. {count} kaldı.",
     "status.reordered": "Sıra değişti. {count} parça, hâlâ hiçbir şey render edilmedi.",

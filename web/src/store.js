@@ -278,6 +278,68 @@ export function selectionSegment() {
 }
 
 /**
+ * Returns segments representing the rest of the sentence EXCLUDING the picked words.
+ *
+ * If middle words are selected, this produces two segments (before & after the pick).
+ * When appended to the timeline, the selected words are cut out of the playback.
+ */
+export function excludeSelectionSegments() {
+  const selection = state.selection;
+  if (!selection) return [];
+
+  const words = state.lines[selection.key];
+  if (!words || !words.length) return [];
+
+  const [take_id, line_id] = selection.key.split(":");
+  const source = state.candidates.find(
+    (candidate) => lineKey(candidate) === selection.key
+  );
+  if (!source) return [];
+
+  const segments = [];
+
+  // Left part: words before the selected range
+  if (selection.from > 0) {
+    const leftWords = words.slice(0, selection.from);
+    if (leftWords.length) {
+      const start_ms = leftWords[0].start_ms;
+      const end_ms = leftWords.at(-1).end_ms;
+      segments.push({
+        ...source,
+        id: `${take_id}:${line_id}:${start_ms}`,
+        line_id: Number(line_id),
+        start_ms,
+        end_ms,
+        duration_ms: end_ms - start_ms,
+        text: leftWords.map((word) => word.word).join(" "),
+        words: leftWords.length,
+      });
+    }
+  }
+
+  // Right part: words after the selected range
+  if (selection.to < words.length - 1) {
+    const rightWords = words.slice(selection.to + 1);
+    if (rightWords.length) {
+      const start_ms = rightWords[0].start_ms;
+      const end_ms = rightWords.at(-1).end_ms;
+      segments.push({
+        ...source,
+        id: `${take_id}:${line_id}:${start_ms}`,
+        line_id: Number(line_id),
+        start_ms,
+        end_ms,
+        duration_ms: end_ms - start_ms,
+        text: rightWords.map((word) => word.word).join(" "),
+        words: rightWords.length,
+      });
+    }
+  }
+
+  return segments;
+}
+
+/**
  * Applies the in-page assistant's result to the state.
  *
  * The rule lives here rather than inside the chat call: the candidates the agent found
