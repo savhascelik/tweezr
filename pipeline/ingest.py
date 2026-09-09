@@ -47,12 +47,24 @@ def ingest(
     line_rows = schema.flatten_line_rows(doc, embeddings=embeddings_map)
 
     if replace:
-        client.command(
-            queries.DROP_PROJECT, parameters={"project": doc["project_id"]}
-        )
-        client.command(
-            queries.DROP_PROJECT_LINES, parameters={"project": doc["project_id"]}
-        )
+        try:
+            client.command(
+                queries.DROP_PROJECT,
+                parameters={"project": doc["project_id"]},
+                settings={"mutations_sync": "1"},
+            )
+            client.command(
+                queries.DROP_PROJECT_LINES,
+                parameters={"project": doc["project_id"]},
+                settings={"mutations_sync": "1"},
+            )
+        except Exception:
+            client.command(
+                queries.DROP_PROJECT, parameters={"project": doc["project_id"]}
+            )
+            client.command(
+                queries.DROP_PROJECT_LINES, parameters={"project": doc["project_id"]}
+            )
 
     client.insert("words", rows, column_names=schema.COLUMNS)
     if line_rows:
