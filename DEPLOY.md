@@ -33,8 +33,11 @@ $env:CLICKHOUSE_DATABASE = "cinema"
 .venv\Scripts\python.exe -m dev.load_demo
 ```
 
-`load_demo` creates the table, writes `demo/takes/*.json` and verifies search. It runs no
-Whisper and needs no GPU.
+`load_demo` creates the table, reads the ready-made ingest documents out of
+`demo/takes/*.json`, writes them, and then runs a search to verify. It runs no Whisper and
+needs no GPU, which is why it also works from inside the deployed environment. It warns
+about any take whose media file is missing: a full database with no playable files is the
+one failure worth catching at load time.
 
 If you are adding your own footage, build the corpus first — that is the heavy part and it
 belongs on a developer machine:
