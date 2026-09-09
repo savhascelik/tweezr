@@ -528,6 +528,7 @@ const ui = createUI(root, {
   onJump: actions.jump,
   onRender: () => actions.render().catch(() => {}),
   onChat: (message) => actions.chat(message).catch(() => {}),
+  onClearChat: () => store.clearChatMessages(),
   onUpload: (file, options) => actions.upload(file, options).catch(() => {}),
   onUploadYouTube: (url, options) => actions.uploadYouTube(url, options).catch(() => {}),
   onScope: (take) => actions.loadVocabulary({ take }).catch(() => {}),

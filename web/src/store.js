@@ -294,6 +294,11 @@ export function appendChatMessage(message) {
   notify();
 }
 
+export function clearChatMessages() {
+  state.chat = { ...state.chat, messages: [] };
+  notify();
+}
+
 function normalizeSegment(candidate) {
   return {
     id: candidate.id,

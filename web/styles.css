@@ -647,19 +647,27 @@ ul {
 
 .grid {
   display: grid;
-  grid-template-columns: 7fr 5fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--s-lg);
   align-items: start;
   margin-top: var(--s-xs);
 }
 
-@media (max-width: 60rem) {
+@media (max-width: 68rem) {
   .grid {
     grid-template-columns: 1fr;
   }
 }
 
 .col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-md);
+  min-width: 0;
+}
+
+.col-library,
+.col-studio {
   display: flex;
   flex-direction: column;
   gap: var(--s-md);
@@ -1793,8 +1801,320 @@ ul {
 }
 
 /* ==========================================================================
-   In-page assistant
+   Collapsible Vocabulary Card
    ========================================================================== */
+
+.card-head-collapsible {
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--t-fast);
+}
+
+.card-head-collapsible:hover {
+  background: color-mix(in srgb, var(--surface-high) 40%, transparent);
+}
+
+.vocab-toggle,
+.vocab-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--r-full);
+  border: none;
+  background: var(--surface-container);
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.vocab-toggle-btn:hover {
+  background: var(--surface-high);
+  color: var(--on-surface);
+}
+
+.vocab-body {
+  transition: max-height var(--t-slow), opacity var(--t-normal), padding var(--t-normal);
+  max-height: 800px;
+  overflow: hidden;
+  opacity: 1;
+}
+
+.vocab-card.is-collapsed .vocab-body {
+  max-height: 0;
+  opacity: 0;
+  padding: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   Dual-Mode AI Assistant (Spotlight HUD & Sidebar Drawer)
+   ========================================================================== */
+
+.chip-assistant-toggle {
+  cursor: pointer;
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  color: var(--primary);
+  transition: all var(--t-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3xs);
+}
+
+.chip-assistant-toggle:hover {
+  background: var(--surface-container);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.chip-assistant-toggle.is-active {
+  background: color-mix(in srgb, var(--primary) 18%, var(--surface-lowest));
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+.assistant-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 850;
+  opacity: 0;
+  transition: opacity var(--t-normal);
+}
+
+.assistant-backdrop.is-visible {
+  display: block;
+  opacity: 1;
+}
+
+.assistant-card {
+  transition: all var(--t-normal) cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.assistant-card.is-hidden {
+  display: none !important;
+}
+
+.assistant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-sm);
+  padding: var(--s-xs) var(--s-sm);
+}
+
+.assistant-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3xs);
+}
+
+.chip-quota {
+  font-size: 0.6875rem;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--r-full);
+}
+
+.chat-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: var(--r-full);
+  border: none;
+  background: transparent;
+  color: var(--on-surface-variant);
+  cursor: pointer;
+  transition: all var(--t-fast);
+}
+
+.chat-ctrl-btn:hover {
+  background: var(--surface-container);
+  color: var(--on-surface);
+}
+
+.chat-action-btn {
+  color: var(--on-surface-variant);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border-radius: var(--r-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--t-fast);
+}
+
+.chat-action-btn:hover {
+  color: var(--primary);
+  background: var(--surface-container);
+}
+
+.btn-chat-send {
+  border-radius: var(--r-full);
+  padding: var(--s-2xs) var(--s-sm);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3xs);
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--primary) 35%, transparent);
+}
+
+/* ==========================================================================
+   MODE 1: Floating Center Spotlight HUD
+   ========================================================================== */
+
+.assistant-card.mode-spotlight {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(820px, calc(100vw - 32px));
+  max-width: 820px;
+  z-index: 900;
+  background: rgba(22, 20, 19, 0.92);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 80%, var(--primary) 20%);
+  border-radius: 24px;
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(230, 92, 59, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: var(--s-xs);
+  animation: spotlightSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes spotlightSlideUp {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 20px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.assistant-card.mode-spotlight .assistant-head {
+  border-bottom: none;
+  padding: 0 var(--s-2xs) var(--s-3xs);
+}
+
+.assistant-card.mode-spotlight .card-lead .card-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.assistant-card.mode-spotlight .card-lead .card-title {
+  font-size: 0.9375rem;
+  letter-spacing: -0.01em;
+}
+
+.assistant-card.mode-spotlight .card-lead .hint {
+  display: none;
+}
+
+.assistant-card.mode-spotlight .chat-stream-wrap {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: var(--s-2xs) var(--s-2xs);
+  margin-bottom: var(--s-2xs);
+  mask-image: linear-gradient(to top, black 65%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, black 65%, transparent 100%);
+}
+
+.assistant-card.mode-spotlight .chat-stream-wrap:empty {
+  display: none;
+}
+
+.assistant-card.mode-spotlight .chat-form {
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-full);
+  padding: 0.35rem 0.5rem;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: all var(--t-fast);
+}
+
+.assistant-card.mode-spotlight .chat-form:focus-within {
+  border-color: var(--primary);
+  background: var(--surface-container);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent), inset 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* ==========================================================================
+   MODE 2: Left Sliding Sidebar Drawer
+   ========================================================================== */
+
+.assistant-card.mode-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: min(440px, 92vw);
+  height: 100vh;
+  z-index: 900;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--outline-variant);
+  border-radius: 0 16px 16px 0;
+  box-shadow: 12px 0 48px rgba(0, 0, 0, 0.6);
+  padding: var(--s-md);
+  animation: sidebarSlideRight 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes sidebarSlideRight {
+  from {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.assistant-card.mode-sidebar .assistant-head {
+  padding: 0 0 var(--s-sm);
+  border-bottom: 1px solid var(--outline-variant);
+  flex-shrink: 0;
+}
+
+.assistant-card.mode-sidebar .chat-stream-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--s-sm) 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.assistant-card.mode-sidebar .chat-log {
+  flex: 1;
+  max-height: none;
+}
+
+.assistant-card.mode-sidebar .chat-form {
+  flex-shrink: 0;
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--r-full);
+  padding: 0.35rem 0.5rem;
+}
 
 .chat-log {
   display: flex;
@@ -1802,10 +2122,6 @@ ul {
   gap: var(--s-xs);
   max-height: 18rem;
   overflow-y: auto;
-}
-
-.chat-log:not(:empty) {
-  margin-bottom: var(--s-sm);
 }
 
 .bubble {
@@ -1819,10 +2135,35 @@ ul {
   background: var(--surface-container);
   align-self: flex-end;
   max-width: 90%;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--on-surface);
 }
 
 .bubble-agent {
   box-shadow: inset 3px 0 0 var(--primary);
+  background: var(--surface-low);
+}
+
+.bubble-thinking {
+  display: flex;
+  align-items: center;
+  gap: var(--s-xs);
+  padding: var(--s-xs) var(--s-sm);
+  border-radius: var(--r-md);
+  background: var(--surface-low);
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.hint-thinking {
+  animation: pulseOpacity 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseOpacity {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
 }
 
 .bubble-error {
@@ -1834,8 +2175,7 @@ ul {
   white-space: pre-wrap;
 }
 
-/* Which tools the agent called. The most telling part of a demo: how the decision was
-   reached becomes visible. */
+/* Which tools the agent called. */
 .tool-trace {
   display: flex;
   flex-wrap: wrap;

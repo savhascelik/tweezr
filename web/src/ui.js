@@ -48,6 +48,14 @@ const ICONS = {
   wave: "M3 12h2l2-6 2 12 2-16 2 20 2-14 2 8 2-4h2",
   swap: "M4 8h13l-3-3M20 16H7l3 3",
   send: "M4 12l16-8-6 8 6 8z",
+  sidebar: "M4 4h16v16H4V4zm6 2v12h8V6h-8z",
+  spotlight: "M4 6h16v12H4V6zm2 8h12M6 10h6",
+  trash: "M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16",
+  undo: "M3 10h10a5 5 0 015 5v2M3 10l6-6M3 10l6 6",
+  chevronDown: "M6 9l6 6 6-6",
+  chevronUp: "M18 15l-6-6-6 6",
+  mic: "M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8",
+  paperclip: "M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48",
 };
 
 /* Delivery glyphs. Not translated: an emoji is not language, and the same glyph appears
@@ -234,6 +242,7 @@ export function createUI(root, handlers) {
         el("span", { class: "chip chip-library" }, [icon("film"), nodes.libraryChip]),
         nodes.webmcpWrap,
         nodes.creditsWrap,
+        nodes.assistantToggle,
         nodes.locale,
       ]),
     ]),
@@ -353,21 +362,89 @@ export function createUI(root, handlers) {
     ]),
   ]);
 
-  /* ================= In-page assistant ================= */
-  // Not a replacement for an external agent; for the visitor who has none. Without a key
-  // it states the reason and points at the panel rather than quietly disappearing.
+  /* ================= In-page assistant (Dual Mode: Sidebar & Spotlight HUD) ================= */
+  // Not a replacement for an external agent; for the visitor who has none.
+
+  let assistantMode = "spotlight"; // "spotlight" | "sidebar"
+  let assistantOpen = true;
+
+  nodes.chatBackdrop = el("div", {
+    class: "assistant-backdrop",
+    onClick: () => toggleAssistant(false),
+  });
 
   nodes.chatLog = el("div", { class: "chat-log" });
-  nodes.chatInput = el("input", { type: "text", id: "chat", class: "chat-input", autocomplete: "off" });
+  nodes.chatInput = el("input", {
+    type: "text",
+    id: "chat",
+    class: "chat-input",
+    autocomplete: "off",
+  });
   label(nodes.chatInput, "assistant.placeholder", "placeholder");
   label(nodes.chatInput, "assistant.heading", "ariaLabel");
 
-  nodes.chatSend = el("button", { type: "submit", class: "btn btn-primary btn-sm" }, [
+  nodes.chatSend = el("button", { type: "submit", class: "btn btn-primary btn-chat-send" }, [
     icon("send", "icon-sm"),
-    label(el("span"), "assistant.send"),
+    label(el("span", { class: "chat-send-label" }), "assistant.send"),
   ]);
   nodes.chatLeft = el("span", { class: "chip-value" });
   nodes.chatNote = el("p", { class: "hint" });
+
+  nodes.chatUndoBtn = el("button", {
+    type: "button",
+    class: "chat-ctrl-btn",
+    onClick: () => {
+      nodes.chatInput.value = "";
+      handlers.onClearSelection?.();
+    },
+  }, [icon("undo", "icon-sm")]);
+  label(nodes.chatUndoBtn, "pick.clear", "title");
+  label(nodes.chatUndoBtn, "pick.clear", "ariaLabel");
+
+  nodes.chatClearBtn = el("button", {
+    type: "button",
+    class: "chat-ctrl-btn",
+    onClick: () => handlers.onClearChat?.(),
+  }, [icon("trash", "icon-sm")]);
+  label(nodes.chatClearBtn, "assistant.clear", "title");
+  label(nodes.chatClearBtn, "assistant.clear", "ariaLabel");
+
+  nodes.chatModeBtn = el("button", {
+    type: "button",
+    class: "chat-ctrl-btn",
+    onClick: () => switchAssistantMode(),
+  }, [icon("sidebar", "icon-sm")]);
+  label(nodes.chatModeBtn, "assistant.modeSidebar", "title");
+  label(nodes.chatModeBtn, "assistant.modeSidebar", "ariaLabel");
+
+  nodes.chatCloseBtn = el("button", {
+    type: "button",
+    class: "chat-ctrl-btn",
+    onClick: () => toggleAssistant(false),
+  }, [icon("close", "icon-sm")]);
+  label(nodes.chatCloseBtn, "assistant.close", "title");
+  label(nodes.chatCloseBtn, "assistant.close", "ariaLabel");
+
+  nodes.chatAttachBtn = el("button", {
+    type: "button",
+    class: "chat-action-btn",
+    onClick: () => {
+      nodes.uploadYouTubeUrl?.focus();
+    },
+  }, [icon("paperclip", "icon-sm")]);
+  label(nodes.chatAttachBtn, "assistant.attachHint", "title");
+  label(nodes.chatAttachBtn, "assistant.attachHint", "ariaLabel");
+
+  nodes.chatVoiceBtn = el("button", {
+    type: "button",
+    class: "chat-action-btn",
+    onClick: () => {
+      nodes.chatInput.value = t("assistant.placeholder");
+      nodes.chatInput.focus();
+    },
+  }, [icon("mic", "icon-sm")]);
+  label(nodes.chatVoiceBtn, "assistant.voiceHint", "title");
+  label(nodes.chatVoiceBtn, "assistant.voiceHint", "ariaLabel");
 
   const chatForm = el(
     "form",
@@ -381,11 +458,61 @@ export function createUI(root, handlers) {
         handlers.onChat(message);
       },
     },
-    [nodes.chatInput, nodes.chatSend]
+    [
+      nodes.chatAttachBtn,
+      nodes.chatVoiceBtn,
+      nodes.chatInput,
+      nodes.chatSend,
+    ]
   );
 
-  nodes.chatCard = el("section", { class: "card" }, [
-    el("div", { class: "card-head" }, [
+  nodes.assistantToggle = el("button", {
+    type: "button",
+    class: "chip chip-assistant-toggle is-active",
+    onClick: () => toggleAssistant(),
+  }, [
+    icon("sparkle", "icon-sm"),
+    label(el("span", { class: "chip-value" }), "assistant.badge"),
+  ]);
+  label(nodes.assistantToggle, "assistant.toggle", "title");
+  label(nodes.assistantToggle, "assistant.toggle", "ariaLabel");
+
+  function syncAssistantView() {
+    nodes.chatCard.classList.remove("mode-spotlight", "mode-sidebar", "is-hidden");
+    if (!assistantOpen) {
+      nodes.chatCard.classList.add("is-hidden");
+      nodes.chatBackdrop.classList.remove("is-visible");
+      nodes.assistantToggle.classList.remove("is-active");
+      return;
+    }
+    nodes.assistantToggle.classList.add("is-active");
+    if (assistantMode === "sidebar") {
+      nodes.chatCard.classList.add("mode-sidebar");
+      nodes.chatBackdrop.classList.add("is-visible");
+      nodes.chatModeBtn.replaceChildren(icon("spotlight", "icon-sm"));
+      label(nodes.chatModeBtn, "assistant.modeSpotlight", "title");
+      label(nodes.chatModeBtn, "assistant.modeSpotlight", "ariaLabel");
+    } else {
+      nodes.chatCard.classList.add("mode-spotlight");
+      nodes.chatBackdrop.classList.remove("is-visible");
+      nodes.chatModeBtn.replaceChildren(icon("sidebar", "icon-sm"));
+      label(nodes.chatModeBtn, "assistant.modeSidebar", "title");
+      label(nodes.chatModeBtn, "assistant.modeSidebar", "ariaLabel");
+    }
+  }
+
+  function toggleAssistant(force) {
+    assistantOpen = force !== undefined ? force : !assistantOpen;
+    syncAssistantView();
+  }
+
+  function switchAssistantMode() {
+    assistantMode = assistantMode === "spotlight" ? "sidebar" : "spotlight";
+    syncAssistantView();
+  }
+
+  nodes.chatCard = el("section", { class: "card assistant-card mode-spotlight" }, [
+    el("div", { class: "card-head assistant-head" }, [
       el("div", { class: "card-lead" }, [
         el("div", { class: "card-icon card-icon-terracotta" }, [icon("sparkle")]),
         el("div", {}, [
@@ -393,11 +520,19 @@ export function createUI(root, handlers) {
           nodes.chatNote,
         ]),
       ]),
-      el("span", { class: "chip" }, [nodes.chatLeft]),
+      el("div", { class: "assistant-controls" }, [
+        el("span", { class: "chip chip-quota" }, [nodes.chatLeft]),
+        nodes.chatUndoBtn,
+        nodes.chatClearBtn,
+        nodes.chatModeBtn,
+        nodes.chatCloseBtn,
+      ]),
     ]),
-    nodes.chatLog,
+    el("div", { class: "chat-stream-wrap" }, [nodes.chatLog]),
     chatForm,
   ]);
+
+  syncAssistantView();
 
   /* ================= Bring your own footage ================= */
   // The library was a fixed corpus, which made the product a demo of itself. This is the
@@ -545,22 +680,57 @@ export function createUI(root, handlers) {
   label(nodes.vocabScope, "vocab.scopeLabel", "title");
   label(nodes.vocabScope, "vocab.scopeLabel", "ariaLabel");
 
-  nodes.vocabCard = el("section", { class: "card" }, [
-    el("div", { class: "card-head" }, [
-      el("div", { class: "card-lead" }, [
-        el("div", { class: "card-icon card-icon-amber" }, [icon("transcript")]),
-        el("div", {}, [
-          label(el("h2", { class: "card-title" }), "vocab.heading"),
-          nodes.vocabSub,
-        ]),
-      ]),
-      el("div", { class: "vocab-head" }, [
-        el("span", { class: "chip" }, [nodes.vocabCount]),
-        nodes.vocabScope,
+  let vocabCollapsed = false;
+  nodes.vocabToggle = el("button", {
+    type: "button",
+    class: "vocab-toggle-btn",
+    onClick: (e) => {
+      e.stopPropagation();
+      setVocabCollapsed(!vocabCollapsed);
+    },
+  }, [icon("chevronUp", "icon-sm")]);
+  label(nodes.vocabToggle, "vocab.collapse", "title");
+  label(nodes.vocabToggle, "vocab.collapse", "ariaLabel");
+
+  function setVocabCollapsed(collapsed) {
+    vocabCollapsed = collapsed;
+    nodes.vocabCard.classList.toggle("is-collapsed", vocabCollapsed);
+    nodes.vocabToggle.replaceChildren(icon(vocabCollapsed ? "chevronDown" : "chevronUp", "icon-sm"));
+    if (vocabCollapsed) {
+      label(nodes.vocabToggle, "vocab.expand", "title");
+      label(nodes.vocabToggle, "vocab.expand", "ariaLabel");
+    } else {
+      label(nodes.vocabToggle, "vocab.collapse", "title");
+      label(nodes.vocabToggle, "vocab.collapse", "ariaLabel");
+    }
+  }
+
+  const vocabHead = el("div", {
+    class: "card-head card-head-collapsible",
+    onClick: () => setVocabCollapsed(!vocabCollapsed),
+  }, [
+    el("div", { class: "card-lead" }, [
+      el("div", { class: "card-icon card-icon-amber" }, [icon("transcript")]),
+      el("div", {}, [
+        label(el("h2", { class: "card-title" }), "vocab.heading"),
+        nodes.vocabSub,
       ]),
     ]),
+    el("div", { class: "vocab-head" }, [
+      el("span", { class: "chip" }, [nodes.vocabCount]),
+      nodes.vocabScope,
+      nodes.vocabToggle,
+    ]),
+  ]);
+
+  nodes.vocabBody = el("div", { class: "vocab-body" }, [
     nodes.vocabWords,
     nodes.vocabNote,
+  ]);
+
+  nodes.vocabCard = el("section", { class: "card vocab-card" }, [
+    vocabHead,
+    nodes.vocabBody,
   ]);
 
   /* ================= Stage ================= */
@@ -724,18 +894,22 @@ export function createUI(root, handlers) {
 
   root.append(
     topbar,
+    nodes.chatBackdrop,
+    nodes.chatCard,
     el("main", { class: "shell" }, [
       hero,
       el("div", { class: "grid" }, [
-        el("div", { class: "col" }, [transcriptCard, nodes.chatCard]),
-        el("div", { class: "col" }, [
-          stageCard,
-          nodes.altCard,
+        el("div", { class: "col col-library" }, [
+          transcriptCard,
           nodes.uploadCard,
           nodes.vocabCard,
         ]),
+        el("div", { class: "col col-studio" }, [
+          stageCard,
+          trackCard,
+          nodes.altCard,
+        ]),
       ]),
-      trackCard,
     ]),
     pagefoot
   );
