@@ -21,3 +21,28 @@ faster-whisper==1.1.1
 # faster-whisper 1.1.1 imports `requests` but did not pull it in transitively in this
 # environment. Pinned explicitly, otherwise the first run is a ModuleNotFoundError.
 requests==2.34.2
+
+# --- faster-whisper's own dependencies, pinned on purpose ---
+#
+# These are transitive, so pip would resolve them itself. Two reasons not to let it.
+#
+# They carry almost all of the image. An unpinned rebuild moved the install layer from
+# 592 MB to 626 MB with nothing in this file changed, which means the size quoted in
+# DEPLOY.md is only true for as long as nobody rebuilds.
+#
+# And they are the inference stack. faster-whisper calls ctranslate2 directly and reads
+# the model through huggingface-hub; a release of either landing between a passing test
+# run and a deploy is the sort of failure that arrives at the worst moment and looks like
+# our bug. The version below is the one every measurement in this repository was taken
+# against, inside the container, on linux.
+#
+# Not a full lock: the remaining transitive packages are small pure-Python ones
+# (idna, packaging, filelock and similar) that cannot plausibly break this and do not
+# move the size. Pinning those too would mean regenerating a lock file on every bump for
+# no protection gained.
+ctranslate2==4.8.2
+onnxruntime==1.29.0
+av==18.1.0
+tokenizers==0.23.2
+huggingface-hub==1.30.0
+numpy==2.4.6

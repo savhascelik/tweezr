@@ -71,7 +71,7 @@ gcloud run deploy $SERVICE `
 Notes:
 
 - **`--min-instances=1`** so a judge does not wait on a cold start. That matters more now
-  that the image is 866MB: it carries the transcription stack and the Whisper model so
+  that the image is 909MB: it carries the transcription stack and the Whisper model so
   uploads work. An idle instance costs money; drop it to `0` once judging is over.
 - **`--cpu=2`** because the FFmpeg concat is CPU work, and now so is transcription. One CPU
   works, just slower — and with `--max-instances=1` a running ingest and a render share

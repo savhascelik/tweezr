@@ -136,14 +136,20 @@ docker run --rm -p 8090:8080 --network dev_default `
   -e CLICKHOUSE_PASSWORD=dev -e CLICKHOUSE_DATABASE=cinema cinema-app:dev
 ```
 
-866MB, single stage. No node stage, because there is no build step.
+909MB, single stage. No node stage, because there is no build step.
 
 It was 337MB until uploads arrived. `faster-whisper` used to be out of the image on the
 grounds that transcription happens offline — a fair argument until a visitor wants to bring
-their own footage, at which point the library is a demo of itself. The 529MB is
-`ctranslate2`, PyAV, `onnxruntime`, `numpy` and the 141MB model baked in so a cold start
+their own footage, at which point the library is a demo of itself. The rest is
+`ctranslate2`, PyAV, `onnxruntime`, `numpy` and the 148MB model baked in so a cold start
 does not fetch it from a third party. Dropping `requirements-ingest.txt` from the Dockerfile
 puts it back to 337MB and turns uploads off cleanly, which the interface already handles.
+
+That figure only stays true because the inference stack is now **pinned**. Those packages
+are transitive, so pip resolved them itself, and an unpinned rebuild with nothing changed in
+our files moved the install layer 34MB — which also means a release of `ctranslate2` or
+`huggingface-hub` landing between a passing test run and a deploy would arrive looking like
+our bug. `requirements-ingest.txt` says which versions and why.
 
 Verified end to end in the container: page, search, media range requests, the FFmpeg render,
 and an upload transcribed and searched.
