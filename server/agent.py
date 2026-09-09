@@ -152,13 +152,11 @@ def format_gemini_error(error: Exception | str) -> str:
 
     if is_quota or is_key_issue:
         return (
-            "Gemini API warning: An issue occurred with the Gemini API key -- your free tier quota "
-            "has likely run out (Rate Limit / Quota Exceeded) or the API key is restricted. "
-            "Please check your quota and billing at Google AI Studio (https://aistudio.google.com/) "
-            "or Google Cloud Console. Search, timeline, and preview features remain fully functional without the assistant."
+            "Gemini API warning: An issue has occurred with the Gemini API key — your free tier quota "
+            "has likely been exhausted. You can use WebMCP instead."
         )
 
-    return f"The assistant encountered an error (likely Gemini free tier quota exceeded or connection issue): {msg}"
+    return f"The assistant encountered an error: {msg}. You can use WebMCP instead."
 
 
 async def ask(user_id: str, message: str, context: dict | None = None) -> dict:

@@ -77,7 +77,7 @@ const CATALOGUE = {
     "assistant.emptyReply": "(empty reply)",
     "assistant.statusFailed": "Could not read assistant status: {error}",
     "assistant.reason.no_api_key":
-      "No GEMINI_API_KEY on the server, or free tier quota has run out. Search, the story track, preview and provenance all work without the assistant.",
+      "No GEMINI_API_KEY on the server, or free tier quota has run out. You can use WebMCP instead.",
     "assistant.modeSidebar": "Switch to sidebar mode",
     "assistant.modeSpotlight": "Switch to spotlight mode",
     "assistant.toggle": "Tweezr AI",
@@ -277,7 +277,7 @@ const CATALOGUE = {
     "assistant.emptyReply": "(boş cevap)",
     "assistant.statusFailed": "Asistan durumu okunamadı: {error}",
     "assistant.reason.no_api_key":
-      "Sunucuda GEMINI_API_KEY tanımlı değil. Arama, hikâye şeridi, önizleme ve provenance asistan olmadan çalışıyor.",
+      "Sunucuda GEMINI_API_KEY tanımlı değil veya ücretsiz kullanım kotası doldu. WebMCP araçlarını kullanabilirsiniz.",
     "assistant.modeSidebar": "Kenar çubuğu moduna geç",
     "assistant.modeSpotlight": "Yüzen çubuk moduna geç",
     "assistant.toggle": "Tweezr AI",

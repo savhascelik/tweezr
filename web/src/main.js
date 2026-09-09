@@ -460,7 +460,7 @@ const actions = {
       ) {
         displayMsg = error.message.includes("Gemini API warning")
           ? error.message
-          : `Gemini API warning: An issue occurred with the Gemini API key -- your free tier quota has likely run out. Please check your quota at Google AI Studio (https://aistudio.google.com/). Search, story track, preview and provenance continue to work without the assistant. (${error.message})`;
+          : "Gemini API warning: An issue has occurred with the Gemini API key — your free tier quota has likely been exhausted. You can use WebMCP instead.";
       }
       store.appendChatMessage({ role: "error", text: displayMsg });
       store.setChat({ busy: false });
