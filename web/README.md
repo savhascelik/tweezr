@@ -1,6 +1,38 @@
-# web — the timeline and virtual splicing
+# web — the story track and virtual splicing
 
 The screen the editor works on. No build step: the file being served is the source.
+
+## The design, and what was dropped from it
+
+The visual design is **Sunlit Studio**: warm paper surfaces, terracotta as the single
+interactive colour, sage for anything verified, generous rounding. Its token set — colour,
+type scale, radii, an 8-point spacing grid — lives at the top of `styles.css` as custom
+properties.
+
+It arrived as a Tailwind Play CDN mockup and was ported rather than adopted, for three
+reasons. Tailwind's own documentation marks the Play CDN as development-only, because it
+compiles CSS in the browser on every load. We have no build step and one origin on
+purpose, and four third-party requests on the critical path means a judge on a locked-down
+network gets unstyled HTML. And the interface is assembled in JS, so there is no HTML file
+to hang utility classes on.
+
+The typeface is served from this origin: `web/fonts`, two subsets, variable weight, 49 KB
+in total. `latin-ext` is not optional — Turkish needs the g-breve and s-cedilla that
+`latin` leaves out. Icons are inline SVG built through `createElementNS`, so there is no
+icon font either.
+
+### Numbers on the screen are numbers we measured
+
+The mockup carried several confident-looking figures — a word precision percentage, a
+resolution and frame rate, a cloud sync indicator. None of them corresponded to anything
+this system measures, and an unverifiable number sitting next to verifiable provenance
+costs more than it buys: it is the one claim a judge cannot check, and it sits directly
+above the ones they can.
+
+They were replaced with values that come from the session, the library statistics or the
+media itself: real take and word counts, the real credit balance, the real container
+format, and the WebMCP tool count. `test_ui.mjs` asserts none of the invented strings came
+back.
 
 ## Why there is no bundler
 
@@ -18,18 +50,47 @@ The blueprint said React; this is a deliberate departure.
 
 | File | Job |
 | --- | --- |
-| `index.html` | One root. No inline script. |
-| `styles.css` | Edit-room palette: dark, low saturation, one accent colour. |
+| `index.html` | One root. No inline script. Preloads the font. |
+| `styles.css` | Sunlit Studio tokens and the whole stylesheet. |
+| `fonts/` | Plus Jakarta Sans, two subsets, served from this origin. |
 | `src/i18n.js` | Interface strings. English default and fallback, Turkish available. |
 | `src/store.js` | Single source of truth. Tools and panel change the same store. |
 | `src/api.js` | Server calls. The session cookie is HttpOnly; fetch sends it. |
 | `src/player.js` | Virtual-splice player. Double buffered, rAF driven. |
-| `src/ui.js` | Rendering. The `el()` helper only accepts `textContent`. |
+| `src/ui.js` | Rendering. `el()` only accepts `textContent`, `icon()` builds SVG. |
 | `src/webmcp.js` | The five WebMCP tools: registration, state reflection, fallback. |
 | `src/approve.js` | Render approval dialog. Closed shadow root. |
 | `src/main.js` | Wiring plus the `ready` promise. |
 | `test_web.mjs` | Store, WebMCP, injection and i18n tests. |
+| `test_ui.mjs` | `render()` driven across every state against a fake DOM. |
 | `test_approve.mjs` | Approval dialog tests against a fake DOM. |
+
+## What is on the screen
+
+**Search and delivery filter.** One field and a row of delivery pills. The pills are the
+tone values the corpus actually carries, so picking one narrows a real query; picking it
+again clears it. It re-runs the search immediately, because a filter that needs a second
+click reads as broken.
+
+**Transcript and line picker.** One card per matching take: speaker, take id, delivery with
+its confidence, the word-level range, and the full line with the searched phrase marked.
+That highlight is the only one on the page, and it answers "why did this take come back"
+without a legend.
+
+**The stage.** The player's two video elements, a caption of the line being played with the
+phrase picked out, elapsed time measured across the **cut** rather than the source file, and
+the real container format. Audio-only takes have no frame to show, so they say so instead
+of presenting a black rectangle.
+
+**Alternative take.** The best-ranked candidate for this line that is not already in the
+cut. Swapping replaces the block at its own position, because the editor chose that order
+and changing a delivery is not a reason to lose it.
+
+**Story track.** One block per segment, each with a frame from its own start time, its take
+id, its line and its duration. Reorderable by drag **or** by arrow keys on the block's
+handle — order is the edit, and it costs nothing because nothing has been rendered.
+
+The empty slot at the end doubles as the empty state, so there is always a way in.
 
 ## The approval dialog
 
@@ -128,15 +189,20 @@ already positioned on the next segment, so the transition is just a `play()` cal
 The media server **must** support HTTP range. Verified: `/media/*` returns 206 with
 `Content-Range`. Without it every seek would download the whole file.
 
-## The provenance strip
+## Provenance
 
-Under every segment on the timeline: which take, which scene, which camera, which
-speaker, which delivery and which millisecond range. The "open source" link opens exactly
-that range through a media fragment (`#t=start,end`).
+Under the stage, for whatever is loaded: the source file, the take id and the millisecond
+range. The "open the source" link opens exactly that range through a media fragment
+(`#t=start,end`). Every story-track block carries its take id and duration, and the
+approval dialog repeats all of it per segment before anything is produced.
 
-That strip is more than an editor convenience: it is what makes the product **"I
-assembled what they said, with sources"** rather than "I made them say something". The
-first is a deepfake tool, the second is journalism. The difference is this strip.
+The source string is whatever the database recorded, and nothing else. That constraint is
+the whole point — a source label that does not name the actual source defeats itself, so
+`test_ui.mjs` asserts the rendered text is the `source_url` from the row.
+
+This is more than an editor convenience: it is what makes the product **"I assembled what
+they said, with sources"** rather than "I made them say something". The first is a
+deepfake tool, the second is journalism. The difference is this.
 
 ## HTML injection discipline
 
@@ -167,10 +233,21 @@ both are empty. A missing key is not fatal, since `t()` falls back, but it means
 reader sees one stray English label — exactly the sort of thing nobody notices until a
 judge does.
 
+The redesign added a third check, because those two only compare the locales to each other
+and both can be wrong together. `test_web.mjs` now scans the source for every key it asks
+for and reconciles it against the catalogue in **both** directions: a key the code wants
+and the catalogue lacks, and a key the catalogue defines that nothing uses. Rewriting the
+interface produced several of each, and neither is visible at runtime — an orphan simply
+never appears, and a missing key only warns in a console nobody is watching.
+
+Two things stay out of the catalogue on purpose. The product name, because it is a proper
+noun. And the delivery glyphs, because an emoji is not language.
+
 ## Tests
 
 ```powershell
 node web\test_web.mjs
+node web\test_ui.mjs
 node web\test_approve.mjs
 ```
 
@@ -185,9 +262,23 @@ Those tests were reading the machine's locale through Node's `navigator.language
 Turkish Windows they asserted against Turkish text and failed. They now pin the locale,
 which is the same hermeticity lesson the API tests learned from the demo seed.
 
-`test_web.mjs`, 89 tests: injection discipline, the `el()` contract, `noopener` on external
-links, store timeline operations, `getState` returning a copy, subscription lifecycle, one
-subscriber's failure not taking down the others, and the i18n catalogue contract.
+`test_web.mjs`, 96 tests: injection discipline, the `el()` contract, `noopener` on external
+links, store timeline operations including reordering and its clamping, `getState`
+returning a copy, subscription lifecycle, one subscriber's failure not taking down the
+others, and the i18n catalogue contract in both directions.
+
+`test_ui.mjs`, 111 tests: `createUI` and `render()` driven against a fake DOM across empty,
+candidates, cut, playing, rendered, failed, assistant-off and Turkish states. Serving the
+file says nothing about whether it renders, and this interface is built entirely in JS, so
+a typo in a node name would otherwise surface in a demo rather than a test run. It also
+pins the decisions: that no invented metric came back, that elapsed time is measured over
+the cut and not the source file, that the highlight is not fooled by case or by a phrase
+that is absent, that reordering works from the keyboard and not only from a pointer, that
+whitespace alone does not spend a message from the assistant quota, and that take ids,
+source filenames and timecodes are identical in both languages.
+
+The scrubber assertion was the one failure on the first run, and it was the test's
+arithmetic rather than the code's.
 
 The WebMCP side is tested against a fake `modelContext`: registration of the five tools,
 name pattern, schemas, `readOnlyHint` flags, every `execute` path, the unknown-candidate
@@ -201,13 +292,17 @@ re-registration on every state change.
 
 ## What has to be verified by hand in a browser
 
-`jsdom` does not implement media playback — `currentTime` does not advance and `play()`
-does nothing. So these cannot be tested automatically and need a look:
+`test_ui.mjs` proves the interface renders and that the wiring reaches the right handler.
+What it cannot prove is that it **looks** right, and no fake DOM implements media playback
+— `currentTime` does not advance and `play()` does nothing. So these need a browser:
 
 1. Play the proposal: do the segments run in order, is there a gap or a click at the joins
 2. Cut points: does it slice through the middle of a word
-3. Is the active segment highlighted on the timeline, does the counter advance
-4. Does "open source" open the right range
+3. Is the active block highlighted, does the scrubber and the counter advance
+4. Does "open the source" open the right range
 5. Does Preview play one segment and stop
 6. Does the approval dialog look and read as expected in a real shadow DOM
 7. Does the download link work after a render
+8. Layout and colour at each breakpoint, and does the self-hosted font actually load
+9. Do the story-track thumbnails show a frame on video takes
+10. Does drag-to-reorder feel right, and does the keyboard path work with a screen reader

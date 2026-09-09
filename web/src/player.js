@@ -152,19 +152,29 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
     frame = requestAnimationFrame(() => tick(myGeneration));
   }
 
-  async function play(nextSegments) {
+  /**
+   * Plays a cut, optionally starting partway in.
+   *
+   * `startIndex` takes the WHOLE cut and begins at one of its segments rather than
+   * receiving a slice. That matters because the reported index has to line up with the
+   * timeline the store holds: hand in a slice and segment 3 comes back as segment 0,
+   * and the interface highlights the wrong block.
+   */
+  async function play(nextSegments, startIndex = 0) {
     stop();
     if (!nextSegments?.length) return;
+
+    const first = Math.min(Math.max(startIndex, 0), nextSegments.length - 1);
 
     generation += 1;
     const myGeneration = generation;
     segments = nextSegments;
-    cursor = 0;
+    cursor = first;
     activeIndex = 0;
     showActive();
 
     try {
-      await prepare(active(), segments[0]);
+      await prepare(active(), segments[first]);
       if (myGeneration !== generation) return;
       await active().play();
     } catch (error) {
@@ -172,8 +182,8 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
       return;
     }
 
-    onSegmentChange?.({ index: 0, segment: segments[0] });
-    prepare(standby(), segments[1]).catch(() => {});
+    onSegmentChange?.({ index: first, segment: segments[first] });
+    prepare(standby(), segments[first + 1]).catch(() => {});
     frame = requestAnimationFrame(() => tick(myGeneration));
   }
 

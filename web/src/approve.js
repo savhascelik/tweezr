@@ -24,41 +24,63 @@ import { seconds, t, toneLabel } from "./i18n.js";
 
 const AUTO_DECLINE_MS = 5 * 60 * 1000;
 
+/* The palette is written out in full rather than pulled from custom properties. `all:
+   initial` on the host stops :root variables inheriting in, which is the point: the page
+   cannot restyle this dialog, so it cannot make the Approve button look like something
+   else. The webfont still resolves, because @font-face is document scoped and reaches
+   into shadow trees. */
 const STYLE = `
   :host { all: initial; }
-  * { box-sizing: border-box; font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif; }
+  * {
+    box-sizing: border-box;
+    font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  }
   .backdrop {
     position: fixed; inset: 0; display: flex; align-items: center;
     justify-content: center; padding: 1.5rem;
-    background: rgba(8, 9, 11, 0.72);
+    background: rgba(52, 47, 46, 0.55);
+    backdrop-filter: blur(8px);
   }
   .sheet {
-    background: #1c1f25; color: #e6e8ec; border: 1px solid #2c313a;
-    border-radius: 10px; width: min(38rem, 100%); max-height: 100%;
+    background: #ffffff; color: #1e1b1a;
+    border-radius: 1.5rem; width: min(38rem, 100%); max-height: 100%;
     display: flex; flex-direction: column; overflow: hidden;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 24px 48px -12px rgba(41, 37, 36, 0.35);
   }
-  header, footer { padding: 1rem 1.15rem; }
-  header { border-bottom: 1px solid #2c313a; }
-  footer { border-top: 1px solid #2c313a; display: flex; gap: 0.5rem; justify-content: flex-end; }
-  h2 { margin: 0 0 0.3rem; font-size: 1rem; }
-  p { margin: 0; font-size: 0.85rem; color: #8b929e; line-height: 1.5; }
-  .body { overflow-y: auto; padding: 0.85rem 1.15rem; }
-  ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.45rem; }
-  li { border: 1px solid #2c313a; border-left: 3px solid #2c313a; border-radius: 6px; padding: 0.5rem 0.6rem; background: #22262d; }
-  .line { margin: 0 0 0.4rem; font-size: 0.88rem; color: #e6e8ec; }
-  .prov { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; font-size: 0.74rem; color: #8b929e; }
-  .take { color: #e6e8ec; font-weight: 600; }
-  .tc { font-family: ui-monospace, Consolas, monospace; color: #e6e8ec; }
-  .cost { margin-top: 0.85rem; font-size: 0.85rem; color: #d9b26a; }
-  .who { margin-top: 0.4rem; font-size: 0.8rem; color: #6ea8fe; }
+  header, footer { padding: 1.25rem 1.5rem; }
+  footer { display: flex; gap: 0.5rem; justify-content: flex-end; background: #fbf2f0; }
+  h2 { margin: 0 0 0.35rem; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.01em; }
+  p { margin: 0; font-size: 0.875rem; color: #5a4138; line-height: 1.6; }
+  .body { overflow-y: auto; padding: 0 1.5rem 1.25rem; }
+  ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+  li { border-radius: 1rem; padding: 0.75rem 1rem; background: #fbf2f0; }
+  .line { margin: 0 0 0.5rem; font-size: 1rem; color: #1e1b1a; }
+  .prov {
+    display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
+    font-size: 0.75rem; color: #5a4138;
+  }
+  .take {
+    color: #1e1b1a; font-weight: 600;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+  .tc { font-family: ui-monospace, Consolas, monospace; color: #1e1b1a; }
+  .cost {
+    margin-top: 1rem; padding: 0.75rem 1rem; border-radius: 1rem;
+    background: #ffdcc3; color: #2f1500; font-size: 0.875rem; font-weight: 600;
+  }
+  .who {
+    margin-top: 0.5rem; padding: 0.75rem 1rem; border-radius: 1rem;
+    background: #d2eac1; color: #0e2006; font-size: 0.875rem; font-weight: 600;
+  }
   button {
-    font: inherit; padding: 0.45rem 0.85rem; border-radius: 6px;
-    border: 1px solid #2c313a; background: #22262d; color: #e6e8ec; cursor: pointer;
+    font: inherit; font-size: 0.875rem; font-weight: 600;
+    padding: 0.5rem 1.5rem; border-radius: 9999px;
+    border: none; background: #f5ecea; color: #1e1b1a; cursor: pointer;
   }
-  button:hover { border-color: #495060; }
-  button.go { border-color: #8a7440; color: #d9b26a; }
-  button:focus-visible { outline: 2px solid #6ea8fe; outline-offset: 1px; }
+  button:hover { background: #efe6e4; }
+  button.go { background: #a33900; color: #ffffff; }
+  button.go:hover { background: #cc4900; }
+  button:focus-visible { outline: 2px solid #a33900; outline-offset: 2px; }
 `;
 
 function timecode(ms) {

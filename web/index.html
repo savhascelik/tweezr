@@ -5,10 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- English by default. The i18n module pulls lang and title to the chosen locale on
          startup; these values cover the state before JS runs, and search engines. -->
-    <title>Line search and rough cut</title>
+    <title>Tweezr — word-level dialogue search and rough cut</title>
     <meta
       name="description"
-      content="Find a spoken line in your library down to the word, rank takes by delivery, and propose a rough cut on the timeline without rendering anything."
+      content="Find a spoken line in your footage down to the word, rank the takes by how they were delivered, and assemble the rough cut without rendering anything."
+    />
+    <!-- The font is served from this origin, so there is no third-party request on the
+         critical path. Preloaded because the whole page is set in it. -->
+    <link
+      rel="preload"
+      href="/fonts/plus-jakarta-sans-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
     />
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -20,7 +29,7 @@
 
     <noscript>
       <p style="padding: 2rem; font: 16px system-ui">
-        This tool runs the editing timeline in the browser, so it needs JavaScript.
+        Tweezr runs the editing timeline in the browser, so it needs JavaScript.
       </p>
     </noscript>
 

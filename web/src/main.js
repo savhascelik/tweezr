@@ -66,6 +66,46 @@ const actions = {
     return timeline;
   },
 
+  /** Order is the edit, and it costs nothing because nothing has been rendered. */
+  reorder(from, to) {
+    const timeline = store.reorderTimeline(from, to);
+    store.setStatus("ok", t("status.reordered", { count: timeline.length }));
+    return timeline;
+  },
+
+  /**
+   * Replaces one block with a different take of the same line, in place.
+   *
+   * In place matters: the editor chose the order, and swapping a delivery is not a
+   * reason to lose it.
+   */
+  swap(index, candidate) {
+    const { timeline } = store.getState();
+    if (!timeline[index]) return timeline;
+    const next = [...timeline];
+    next[index] = candidate;
+    const applied = store.setTimeline(next);
+    store.setStatus(
+      "ok",
+      t("status.swapped", { take: candidate.take_id, position: index + 1 })
+    );
+    return applied;
+  },
+
+  /**
+   * Jumps to a segment of the cut.
+   *
+   * The whole timeline is handed to the player with a start index rather than a slice,
+   * so the index that comes back still refers to the same list the store holds.
+   */
+  jump(index) {
+    const { timeline } = store.getState();
+    if (!timeline.length) return;
+    const target = Math.min(Math.max(index, 0), timeline.length - 1);
+    store.setPlayback({ playing: true, index: target, offsetMs: 0 });
+    player.play(timeline, target);
+  },
+
   clear() {
     store.clearTimeline();
     player.stop();
@@ -195,9 +235,12 @@ const ui = createUI(root, {
   onAdd: actions.add,
   onPreview: actions.preview,
   onRemove: actions.remove,
+  onReorder: actions.reorder,
+  onSwap: actions.swap,
   onClearTimeline: actions.clear,
   onPlay: actions.play,
   onStop: actions.stop,
+  onJump: actions.jump,
   onRender: () => actions.render().catch(() => {}),
   onChat: (message) => actions.chat(message).catch(() => {}),
 });

@@ -119,6 +119,30 @@ console.log("\n=== store ===");
   check("duration derived", first.duration_ms, 820);
   check("tone default", first.tone, "neutral");
 
+  // Reordering: the cheapest possible edit, because nothing has been rendered yet
+  store.appendToTimeline(candidate("S01_T05:1:0", 0, 500));
+  store.reorderTimeline(2, 0);
+  check(
+    "reorder moved the block to the front",
+    store.getState().timeline.map((segment) => segment.take_id),
+    ["S01_T05", "S01_T01", "S01_T03"]
+  );
+  store.reorderTimeline(0, 2);
+  check(
+    "reorder moved it back to the end",
+    store.getState().timeline.map((segment) => segment.take_id),
+    ["S01_T01", "S01_T03", "S01_T05"]
+  );
+  // Arrow keys and pointer drags both overshoot the ends, so out of range clamps
+  store.reorderTimeline(0, -5);
+  check(
+    "out-of-range target clamps instead of throwing",
+    store.getState().timeline[0].take_id,
+    "S01_T01"
+  );
+  check("reorder kept the segment count", store.getState().timeline.length, 3);
+  store.removeFromTimeline(2);
+
   store.removeFromTimeline(0);
   check("segment removed", store.getState().timeline.length, 1);
   check("the right segment survived", store.getState().timeline[0].take_id, "S01_T03");
@@ -441,7 +465,7 @@ console.log("\n=== i18n ===");
     check(`${locale}: no stray keys`, i18n.strayKeys(locale), []);
   }
 
-  check("English default reads back", i18n.t("timeline.stop"), "Stop");
+  check("English default reads back", i18n.t("transport.stop"), "Stop");
   check("interpolation", i18n.t("field.camera", { value: "B" }), "cam B");
   check(
     "multiple parameters",
@@ -455,7 +479,7 @@ console.log("\n=== i18n ===");
 
   i18n.setLocale("tr");
   check("locale changed", i18n.getLocale(), "tr");
-  check("Turkish text", i18n.t("timeline.stop"), "Durdur");
+  check("Turkish text", i18n.t("transport.stop"), "Durdur");
   check("Turkish unit", i18n.seconds(1340), "1.34 sn");
   check("Turkish tone", i18n.toneLabel("whisper"), "fısıltı");
 
@@ -476,6 +500,47 @@ console.log("\n=== i18n ===");
 
   // An unknown key returns the key itself: it stays readable
   check("unknown key", i18n.t("nope.missing"), "nope.missing");
+
+  // --- Catalogue reconciled against the source ---
+  // Rewriting the interface for the new design turned some keys into orphans and asked
+  // for some that were never added. Both directions are silent at runtime: an unused
+  // entry simply never appears, and a missing one only warns in a console nobody is
+  // watching. So they get checked here instead.
+  const sources = ["ui.js", "main.js", "approve.js", "i18n.js"].map((name) =>
+    readFileSync(join(here, "src", name), "utf8")
+  );
+
+  // Keys built at runtime from a variable. The prefix is what can be verified; the
+  // suffixes are covered by the tone/locale assertions above.
+  const DYNAMIC = ["tone.", "locale.", "assistant.reason."];
+
+  const used = new Set();
+  for (const body of sources) {
+    // t("key"), t('key'), and label(node, "key") in either quote style
+    for (const match of body.matchAll(/\bt\(\s*["']([\w.]+)["']/g)) used.add(match[1]);
+    for (const match of body.matchAll(/label\([\s\S]*?,\s*["']([\w.]+)["']/g)) {
+      used.add(match[1]);
+    }
+    // label(node, key, prop) where the key arrives as a variable holding a literal
+    for (const match of body.matchAll(/addMood\(\s*"[^"]*",\s*"([\w.]+)"/g)) {
+      used.add(match[1]);
+    }
+  }
+
+  const defined = new Set(i18n.catalogueKeys());
+  const dynamic = (key) => DYNAMIC.some((prefix) => key.startsWith(prefix));
+
+  const undefinedKeys = [...used].filter((key) => !defined.has(key)).sort();
+  check("every key the source asks for exists", undefinedKeys, []);
+
+  const orphans = [...defined].filter((key) => !used.has(key) && !dynamic(key)).sort();
+  check("no orphan keys left in the catalogue", orphans, []);
+
+  checkThat(
+    "the reconciliation actually collected keys",
+    used.size > 40,
+    `only found ${used.size}`
+  );
 }
 
 const passed = results.filter(Boolean).length;

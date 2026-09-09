@@ -8,7 +8,11 @@
  * a different contract depending on who is looking at the screen.
  *
  * Missing keys fall back to English rather than showing the key, so a gap in the
- * Turkish catalogue degrades to a readable label instead of `timeline.heading`.
+ * Turkish catalogue degrades to a readable label instead of `track.heading`.
+ *
+ * Two kinds of string deliberately stay out of this file: the product name, which is a
+ * proper noun, and the delivery glyphs, which are emoji. Neither translates, and putting
+ * them here would only invite someone to try.
  */
 
 const STORAGE_KEY = "cinema.locale";
@@ -16,34 +20,49 @@ const DEFAULT_LOCALE = "en";
 
 const CATALOGUE = {
   en: {
-    "app.title": "Line search and rough cut",
-    "app.tagline": "propose without rendering, produce after approval",
+    "app.title": "Tweezr — word-level dialogue search and rough cut",
+    "brand.note": "Word tweezing & dialogue assembly",
 
     "locale.label": "Language",
     "locale.en": "English",
     "locale.tr": "Türkçe",
 
-    "meta.session": "session",
-    "meta.credits": "credits",
-    "meta.library": "library",
-    "meta.libraryValue": "{takes} takes, {words} words, {vocabulary} distinct",
+    "meta.libraryChip": "{takes} takes · {words} words",
+    "meta.creditsChip": "{count} credits",
 
     "webmcp.on": "WebMCP · {count} tools",
-    "webmcp.off": "No WebMCP — panel in charge",
+    "webmcp.off": "No WebMCP · panel in charge",
 
-    "search.heading": "Search",
-    "search.hint":
-      "An agent does the same job through the WebMCP tools. This panel is here so the flow works without them.",
-    "search.phraseLabel": "Line",
-    "search.toneLabel": "Tone",
-    "search.anyTone": "any tone",
-    "search.submit": "Search",
+    "hero.badge": "Word-level cut studio",
+    "hero.badgeState": "session open",
+    "hero.title": "Shape video by tweezing words.",
+    "hero.sub":
+      "No scrubbing the timeline. Search a spoken line, pick the delivery, and let the cut assemble itself.",
+
+    "search.label": "Line to look for",
+    "search.example": "e.g. \u201c{line}\u201d",
+    "search.submit": "Tweeze line",
+
+    "moods.label": "Delivery",
+    "moods.any": "any",
+
+    "transcript.heading": "Transcript & line picker",
+    "transcript.sub": "Preview a take, or add the line straight to the story track",
+    "transcript.tip": "Searching is free. Nothing is rendered until you approve it.",
+    "transcript.count": "{count} matches",
+    "transcript.countEmpty": "no search yet",
+
+    "candidates.empty": "Search a line and the takes that contain it show up here.",
+    "candidates.preview": "Preview",
+    "candidates.add": "Add to cut",
+    "candidates.addAgain": "Add again",
+    "candidates.inCut": "In the cut",
 
     "assistant.heading": "Assistant",
-    "assistant.messagesLeft": "({count} messages left)",
-    "assistant.off": "(off)",
+    "assistant.messagesLeft": "{count} messages left",
+    "assistant.off": "off",
     "assistant.hint":
-      "Ask in your own words. The assistant searches the library and puts a proposal on the timeline; it does not render.",
+      "Ask in your own words. It searches the library and puts a proposal on the track; it does not render.",
     "assistant.offFallback": "The assistant is off.",
     "assistant.thinking": "Thinking…",
     "assistant.send": "Ask",
@@ -51,29 +70,47 @@ const CATALOGUE = {
     "assistant.emptyReply": "(empty reply)",
     "assistant.statusFailed": "Could not read assistant status: {error}",
     "assistant.reason.no_api_key":
-      "No GEMINI_API_KEY on the server. Search, timeline, preview and provenance all work without the assistant.",
+      "No GEMINI_API_KEY on the server. Search, the story track, preview and provenance all work without the assistant.",
 
-    "candidates.heading": "Candidates",
-    "candidates.empty": "No search yet.",
-    "candidates.preview": "Preview",
-    "candidates.add": "Add to cut",
-    "candidates.addAgain": "Add again",
+    "stage.audioOnly": "audio only",
+    "stage.idle": "nothing loaded",
 
-    "timeline.heading": "Rough cut",
-    "timeline.summary": "({count} segments, {duration})",
-    "timeline.empty": "The cut is empty. Add from the candidate list, or ask the agent.",
-    "timeline.remove": "Remove this segment",
-    "timeline.openSource": "open source",
-    "timeline.notPlaying": "Not playing",
-    "timeline.play": "Play the cut",
-    "timeline.stop": "Stop",
-    "timeline.clear": "Clear",
-    "timeline.render": "Approve and render",
+    "transport.play": "Play the cut",
+    "transport.stop": "Stop",
+    "transport.previous": "Previous segment",
+    "transport.next": "Next segment",
+    "transport.position": "{index}/{count} · {take} · {time}",
+    "transport.idle": "not playing",
+
+    "provenance.title": "Source of what is loaded",
+    "provenance.open": "open the source",
+    "provenance.empty": "Nothing on the track yet.",
+    "provenance.unknown": "(no source recorded)",
+
+    "alt.title": "Another take of this line",
+    "alt.detail": "{take}, delivered {tone}.",
+    "alt.swap": "Swap take",
+
+    "track.heading": "Story track",
+    "track.sub": "Drag a block, or use the arrow keys on its handle, to change the pacing.",
+    "track.assembled": "{count} assembled",
+    "track.total": "Total duration",
+    "track.preview": "Preview sequence",
+    "track.clear": "Clear",
+    "track.export": "Export cut",
+    "track.note": "Every fragment keeps its source take and timecode. Nothing is synthesised.",
+    "track.pluck": "Pluck a line",
+    "track.pluckNote": "From the transcript",
+    "track.move": "Move this block",
+    "track.remove": "Remove this block",
 
     "render.running": "Rendering…",
     "render.failed": "Render failed.",
-    "render.readyLabel": "Ready: ",
-    "render.download": "roughcut ({format})",
+    "render.readyLabel": "Ready:",
+    "render.download": "roughcut.{format}",
+
+    "foot.tagline": "A line search and rough-cut studio for editors and directors",
+    "foot.note": "Sourced assembly, not synthesis.",
 
     "field.camera": "cam {value}",
     "unit.seconds": "{value} s",
@@ -85,7 +122,9 @@ const CATALOGUE = {
     "status.added": "{take} added. {count} segments.",
     "status.proposed": "A {count}-segment proposal is ready. Nothing was rendered.",
     "status.removed": "Segment removed. {count} left.",
-    "status.emptyCut": "The cut is empty.",
+    "status.reordered": "Order changed. {count} segments, still nothing rendered.",
+    "status.swapped": "Position {position} is now {take}.",
+    "status.emptyCut": "The story track is empty.",
     "status.playing": "Playing with virtual splicing — nothing was rendered.",
     "status.previewing": "Previewing {take}.",
     "status.playbackDone": "Playback finished.",
@@ -117,34 +156,49 @@ const CATALOGUE = {
   },
 
   tr: {
-    "app.title": "Replik arama ve kaba kurgu",
-    "app.tagline": "render etmeden öner, onaydan sonra üret",
+    "app.title": "Tweezr — kelime bazlı replik arama ve kaba kurgu",
+    "brand.note": "Kelime cımbızlama & replik montajı",
 
     "locale.label": "Dil",
     "locale.en": "English",
     "locale.tr": "Türkçe",
 
-    "meta.session": "oturum",
-    "meta.credits": "kredi",
-    "meta.library": "kütüphane",
-    "meta.libraryValue": "{takes} take, {words} kelime, {vocabulary} farklı",
+    "meta.libraryChip": "{takes} take · {words} kelime",
+    "meta.creditsChip": "{count} kredi",
 
     "webmcp.on": "WebMCP · {count} araç",
-    "webmcp.off": "WebMCP yok — panel devrede",
+    "webmcp.off": "WebMCP yok · panel devrede",
 
-    "search.heading": "Ara",
-    "search.hint":
-      "Ajan aynı işi WebMCP araçlarıyla yapıyor. Bu panel araçlar yoksa da çalışsın diye burada.",
-    "search.phraseLabel": "Replik",
-    "search.toneLabel": "Ton",
-    "search.anyTone": "her ton",
-    "search.submit": "Ara",
+    "hero.badge": "Kelime seviyesinde kurgu",
+    "hero.badgeState": "oturum açık",
+    "hero.title": "Videoyu kelimeleri cımbızlayarak biçimlendir.",
+    "hero.sub":
+      "Timeline'da gezinmek yok. Söylenen repliği ara, sunumu seç, kurgu kendini kursun.",
+
+    "search.label": "Aranacak replik",
+    "search.example": "örn. \u201c{line}\u201d",
+    "search.submit": "Repliği cımbızla",
+
+    "moods.label": "Sunum",
+    "moods.any": "hepsi",
+
+    "transcript.heading": "Transkript ve replik seçici",
+    "transcript.sub": "Take'i önizle, ya da repliği doğrudan hikâye şeridine ekle",
+    "transcript.tip": "Arama bedava. Sen onaylamadan hiçbir şey render edilmiyor.",
+    "transcript.count": "{count} eşleşme",
+    "transcript.countEmpty": "henüz arama yok",
+
+    "candidates.empty": "Bir replik ara, onu içeren take'ler burada listelenir.",
+    "candidates.preview": "Önizle",
+    "candidates.add": "Kurguya ekle",
+    "candidates.addAgain": "Tekrar ekle",
+    "candidates.inCut": "Kurguda",
 
     "assistant.heading": "Asistan",
-    "assistant.messagesLeft": "({count} mesaj hakkı)",
-    "assistant.off": "(kapalı)",
+    "assistant.messagesLeft": "{count} mesaj hakkı",
+    "assistant.off": "kapalı",
     "assistant.hint":
-      "Doğal dille sor. Asistan kütüphanede arıyor ve timeline'a öneri koyuyor; render etmiyor.",
+      "Doğal dille sor. Kütüphanede arıyor ve şeride öneri koyuyor; render etmiyor.",
     "assistant.offFallback": "Asistan kapalı.",
     "assistant.thinking": "Asistan düşünüyor…",
     "assistant.send": "Sor",
@@ -152,29 +206,47 @@ const CATALOGUE = {
     "assistant.emptyReply": "(boş cevap)",
     "assistant.statusFailed": "Asistan durumu okunamadı: {error}",
     "assistant.reason.no_api_key":
-      "Sunucuda GEMINI_API_KEY tanımlı değil. Arama, timeline, önizleme ve provenance asistan olmadan çalışıyor.",
+      "Sunucuda GEMINI_API_KEY tanımlı değil. Arama, hikâye şeridi, önizleme ve provenance asistan olmadan çalışıyor.",
 
-    "candidates.heading": "Adaylar",
-    "candidates.empty": "Henüz arama yapılmadı.",
-    "candidates.preview": "Önizle",
-    "candidates.add": "Kurguya ekle",
-    "candidates.addAgain": "Tekrar ekle",
+    "stage.audioOnly": "yalnızca ses",
+    "stage.idle": "yüklü değil",
 
-    "timeline.heading": "Kaba kurgu",
-    "timeline.summary": "({count} parça, {duration})",
-    "timeline.empty": "Kurgu boş. Aday listesinden ekle, ya da ajana söyle.",
-    "timeline.remove": "Bu parçayı çıkar",
-    "timeline.openSource": "kaynağı aç",
-    "timeline.notPlaying": "Oynatılmıyor",
-    "timeline.play": "Öneriyi oynat",
-    "timeline.stop": "Durdur",
-    "timeline.clear": "Temizle",
-    "timeline.render": "Onayla ve render et",
+    "transport.play": "Kurguyu oynat",
+    "transport.stop": "Durdur",
+    "transport.previous": "Önceki parça",
+    "transport.next": "Sonraki parça",
+    "transport.position": "{index}/{count} · {take} · {time}",
+    "transport.idle": "oynatılmıyor",
+
+    "provenance.title": "Yüklü olanın kaynağı",
+    "provenance.open": "kaynağı aç",
+    "provenance.empty": "Şeritte henüz bir şey yok.",
+    "provenance.unknown": "(kaynak kaydı yok)",
+
+    "alt.title": "Bu repliğin başka bir take'i",
+    "alt.detail": "{take}, {tone} okunmuş.",
+    "alt.swap": "Take'i değiştir",
+
+    "track.heading": "Hikâye şeridi",
+    "track.sub": "Bloğu sürükle, ya da tutamağında ok tuşlarını kullan; tempo değişsin.",
+    "track.assembled": "{count} parça",
+    "track.total": "Toplam süre",
+    "track.preview": "Diziyi önizle",
+    "track.clear": "Temizle",
+    "track.export": "Kurguyu çıkart",
+    "track.note": "Her parça kaynak take'ini ve timecode'unu taşıyor. Hiçbir şey sentezlenmiyor.",
+    "track.pluck": "Replik cımbızla",
+    "track.pluckNote": "Transkriptten",
+    "track.move": "Bu bloğu taşı",
+    "track.remove": "Bu bloğu çıkar",
 
     "render.running": "Render sürüyor…",
     "render.failed": "Render başarısız.",
-    "render.readyLabel": "Hazır: ",
-    "render.download": "roughcut ({format})",
+    "render.readyLabel": "Hazır:",
+    "render.download": "roughcut.{format}",
+
+    "foot.tagline": "Kurgucular ve yönetmenler için replik arama ve kaba kurgu stüdyosu",
+    "foot.note": "Kaynaklı montaj, sentez değil.",
 
     "field.camera": "kam {value}",
     "unit.seconds": "{value} sn",
@@ -186,7 +258,9 @@ const CATALOGUE = {
     "status.added": "{take} eklendi. {count} parça.",
     "status.proposed": "{count} parçalık öneri hazır. Render edilmedi.",
     "status.removed": "Parça çıkarıldı. {count} kaldı.",
-    "status.emptyCut": "Kurgu boş.",
+    "status.reordered": "Sıra değişti. {count} parça, hâlâ hiçbir şey render edilmedi.",
+    "status.swapped": "{position}. sıra artık {take}.",
+    "status.emptyCut": "Hikâye şeridi boş.",
     "status.playing": "Sanal kırpma ile oynatılıyor — hiçbir şey render edilmedi.",
     "status.previewing": "{take} önizleniyor.",
     "status.playbackDone": "Oynatma bitti.",
@@ -219,6 +293,19 @@ const CATALOGUE = {
 };
 
 export const LOCALES = Object.keys(CATALOGUE);
+
+/**
+ * Every key the catalogue defines.
+ *
+ * Exported for the test that reconciles the catalogue against the keys the source
+ * actually asks for. Rewriting the interface turned a handful of keys into orphans and
+ * invented a handful more; both directions are silent at runtime — an unused entry never
+ * shows up, and a missing one only warns in the console of whoever happens to be
+ * looking. The test makes both loud.
+ */
+export function catalogueKeys() {
+  return Object.keys(CATALOGUE[DEFAULT_LOCALE]);
+}
 
 function readStored() {
   try {

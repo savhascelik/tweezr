@@ -21,10 +21,17 @@ endpoint that writes is render, and that one spends credit.
 
 from __future__ import annotations
 
+import mimetypes
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from . import config, routes, sessions
+
+# Python's mimetypes table has no entry for woff2, so StaticFiles would serve the
+# self-hosted font with no Content-Type. Combined with the nosniff header below that is
+# asking for trouble, and registering it is cheaper than debugging it later.
+mimetypes.add_type("font/woff2", ".woff2")
 
 
 def create_app() -> FastAPI:

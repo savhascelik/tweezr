@@ -81,6 +81,32 @@ export function removeFromTimeline(index) {
   return state.timeline;
 }
 
+/**
+ * Moves a segment to another position.
+ *
+ * Order is the edit. Reordering is the cheapest way to change how a cut reads, and it
+ * costs nothing because nothing has been rendered — so it belongs next to append and
+ * remove rather than behind the render step.
+ *
+ * Out-of-range indices are clamped rather than throwing: this is driven by a pointer
+ * drag and by arrow keys, and both can overshoot the ends by one.
+ */
+export function reorderTimeline(from, to) {
+  const last = state.timeline.length - 1;
+  if (last < 0) return state.timeline;
+
+  const source = Math.min(Math.max(from, 0), last);
+  const target = Math.min(Math.max(to, 0), last);
+  if (source === target) return state.timeline;
+
+  const next = [...state.timeline];
+  const [moved] = next.splice(source, 1);
+  next.splice(target, 0, moved);
+  state.timeline = next;
+  notify();
+  return state.timeline;
+}
+
 export function clearTimeline() {
   state.timeline = [];
   notify();

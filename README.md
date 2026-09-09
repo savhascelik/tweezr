@@ -1,8 +1,7 @@
-# (project name goes here)
+# Tweezr
 
-> Name it yourself. It is the first thing a judge sees, and the competition notes say
-> plainly not to let an AI name your project. `TakeFinder`, `Continuity`, `RoughCut`
-> and `Citeline` are here as prompts, not as choices.
+**Word tweezing and dialogue assembly.** Find a spoken line down to the word, rank the
+takes by how they were delivered, and assemble the cut without rendering anything.
 
 A shooting day turns a forty minute scene into six hours of footage. The same line gets
 recorded twelve times, in different deliveries, from different angles. Then in the
@@ -36,6 +35,8 @@ This repository is mid-build. As of now, **working and tested**:
   measured live at 2160ms from two different takes, exactly the sum of the ranges
 - In-page ADK assistant when a key is present; the product works without it
 - English and Turkish interface, English by default
+- Story track reordering by drag or by arrow keys on a block's handle
+- Interface rendered from state and checked headless — 111 UI tests, 96 web tests
 
 Written but **not verified**: the Gemini tone pass and an assistant turn (no live key
 here), and the tools appearing in a real agent client (nothing local exposes
