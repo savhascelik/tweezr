@@ -167,6 +167,13 @@ def main() -> int:
             print(f"  ! {problem}", file=sys.stderr)
         return 1
 
+    notes = schema.warnings(doc)
+    if notes:
+        # Shown, not fatal. These fire on ordinary footage; see pipeline/schema.py.
+        print(f"\n   {len(notes)} notes on the alignment:")
+        for note in notes:
+            print(f"     - {note}")
+
     print(f"\n4. writing to ClickHouse: {db.describe()}")
     try:
         client = db.connect()

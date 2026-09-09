@@ -223,6 +223,12 @@ def run_blocking(job: Job, media: Path, language: str) -> None:
         if problems:
             raise UploadRejected("The transcript did not match the contract: " + problems[0])
 
+        # Soft findings are logged, never a reason to refuse. They fire on ordinary
+        # footage — a hyphen tokenised differently, a drawn-out word, a small overlap —
+        # and refusing a paid ingest over any of those is indefensible.
+        for note in schema.warnings(doc):
+            print(f"upload {job.id}: {note}")
+
         job.stage = "writing"
         client = ch.client()
         from pipeline import db

@@ -24,7 +24,8 @@ This repository is mid-build. As of now, **working and tested**:
   multilingual model by default, language detected or named
 - Your own audio or video into the library in one command: `python -m dev.add_take`
 - Video end to end, verified: search → word picking → mp4 render with h264 and aac
-- ClickHouse ingest with word and phrase search, filtered by delivery — 20 query tests
+- ClickHouse ingest with word and phrase search, filtered by delivery — 31 query and
+  contract tests
 - Sample-accurate cutting and splicing on word boundaries
 - Assembling a new sentence from single words taken across different recordings
 - HTTP API: anonymous sessions, credit ledger, the `Origin-Agent-Cluster` header,
@@ -149,7 +150,7 @@ Deploying to Cloud Run: `DEPLOY.md`.
 ## Tests
 
 ```powershell
-.venv\Scripts\python.exe -m pipeline.test_queries    #  20  SQL correctness
+.venv\Scripts\python.exe -m pipeline.test_queries    #  31  SQL and the data contract
 .venv\Scripts\python.exe -m server.test_api          # 138  API, uploads, render, agent tools
 .venv\Scripts\python.exe -m doctest pipeline\schema.py
 node web\test_web.mjs                                # 122  store, WebMCP, injection, i18n

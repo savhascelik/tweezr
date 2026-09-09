@@ -142,10 +142,35 @@ def flatten_rows(doc: dict) -> list[tuple]:
     return rows
 
 
-def validate(doc: dict) -> list[str]:
-    """Checks an ingest document. Returns a list of problems; empty means clean.
+def spoken_content(text: str) -> str:
+    """Letters and digits only, for comparing what was said rather than how it was split.
 
-    Alignment quality is measured here too, since that is the real risk.
+    Word boundaries are not something this contract cares about, and two renderings of the
+    same speech disagree about them constantly. Whisper's segment text keeps a hyphenated
+    word whole while its word timestamps split it at the hyphen, so `lafrey-he` in the text
+    is `lafrey-` and `he` in the words. Same speech, two tokenisations.
+
+    >>> spoken_content("lafrey-he video") == spoken_content("lafrey- he video")
+    True
+    >>> spoken_content("Don't!") == spoken_content("don t")
+    True
+    >>> spoken_content("hello there") == spoken_content("hello world")
+    False
+    """
+    return "".join(ch for ch in unicodedata.normalize("NFKC", text).casefold() if ch.isalnum())
+
+
+def validate(doc: dict) -> list[str]:
+    """FATAL problems only. Empty means the document can be ingested.
+
+    "Fatal" means the rows would be wrong or unusable: a missing key, a duplicate line id,
+    a word whose range is empty. Everything softer is in `warnings()`.
+
+    That split exists because it was not there and it cost a user a paid ingest. The text
+    and word list of a real take disagreed about one hyphen, and this function refused the
+    whole thing — even though the line text never reaches ClickHouse at all. It is used for
+    display and for the tone prompt; `words` is what gets indexed and cut. Refusing rows
+    that were correct, over a field that is not stored, is the wrong severity.
     """
     problems: list[str] = []
 
@@ -162,6 +187,8 @@ def validate(doc: dict) -> list[str]:
         seen_lines = set()
         for line in take.get("lines", []):
             lid = line.get("line_id")
+            # A duplicate would make (take_id, line_id) ambiguous, and that pair is how
+            # every line-level lookup addresses a line.
             if lid in seen_lines:
                 problems.append(f"{tid}: line_id {lid} appears twice")
             seen_lines.add(lid)
@@ -171,15 +198,51 @@ def validate(doc: dict) -> list[str]:
                 problems.append(f"{tid}/{lid}: no words")
                 continue
 
-            # Does the text agree with the word sequence
+            for word in words:
+                start, end = int(word["start_ms"]), int(word["end_ms"])
+                # An empty or inverted range would cut nothing, or ask ffmpeg for a
+                # negative duration.
+                if end <= start:
+                    problems.append(
+                        f"{tid}/{lid} {word['word']!r}: zero or negative duration "
+                        f"({start}->{end})"
+                    )
+
+    return problems
+
+
+def warnings(doc: dict) -> list[str]:
+    """Things worth knowing that do NOT make a document unusable.
+
+    All three of these fire on ordinary footage, which is exactly why they are not fatal:
+
+    - Text and words disagreeing. Compared on content now rather than on tokenisation, so
+      it only fires when the segment text and the word list describe different speech —
+      which does happen when Whisper's segmenter and its word timestamps diverge, and is
+      worth seeing without being worth refusing.
+    - A word longer than three seconds. A heuristic. A drawn-out word, or one Whisper
+      stretched across a pause, is real.
+    - Words overlapping. faster-whisper emits small overlaps, and every word range is cut
+      independently, so an overlap changes nothing about the output.
+    """
+    notes: list[str] = []
+
+    for take in doc.get("takes", []):
+        tid = take.get("take_id", "<unnamed>")
+        for line in take.get("lines", []):
+            lid = line.get("line_id")
+            words = line.get("words", [])
+            if not words:
+                continue
+
             if line.get("text"):
                 from_words = " ".join(
                     n for n in (normalize_word(w["word"]) for w in words) if n
                 )
                 from_text = " ".join(normalize_phrase(line["text"]))
-                if from_words != from_text:
-                    problems.append(
-                        f"{tid}/{lid}: text and words disagree\n"
+                if spoken_content(from_words) != spoken_content(from_text):
+                    notes.append(
+                        f"{tid}/{lid}: text and words describe different speech\n"
                         f"    text : {from_text}\n"
                         f"    words: {from_words}"
                     )
@@ -189,18 +252,15 @@ def validate(doc: dict) -> list[str]:
                 start, end = int(word["start_ms"]), int(word["end_ms"])
                 label = f"{tid}/{lid} {word['word']!r}"
 
-                if end <= start:
-                    problems.append(f"{label}: zero or negative duration ({start}->{end})")
-                elif end - start > 3000:
-                    problems.append(f"{label}: {end - start} ms, too long for one word")
-
+                if end - start > 3000:
+                    notes.append(f"{label}: {end - start} ms, long for one word")
                 if prev_end is not None and start < prev_end:
-                    problems.append(
+                    notes.append(
                         f"{label}: overlaps the previous word by {prev_end - start} ms"
                     )
                 prev_end = end
 
-    return problems
+    return notes
 
 
 def alignment_report(doc: dict) -> dict:

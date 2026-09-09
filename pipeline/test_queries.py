@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import sys
 
-from . import db, queries, schema, search, verify_cut
+from . import db, ingest, queries, schema, search, verify_cut
 
 TEST_PROJECT = "__test__"
 
@@ -160,6 +160,110 @@ def main() -> int:
         check("tone=angry -> 0 matches", search.phrase_search(
             client, TEST_PROJECT, "go now", tone="angry"), [])
     )
+
+    print("\n=== contract validation: fatal vs notes ===")
+    # A real upload was refused because the segment text kept `lafrey-he` whole while the
+    # word timestamps split it at the hyphen. Same speech, two tokenisations — and the line
+    # text never even reaches ClickHouse. Refusing a paid ingest over a field that is not
+    # stored was the wrong severity, so this pins the split.
+    def line_doc(text, spoken, **overrides):
+        word = lambda w, i: {
+            "word": w,
+            "start_ms": i * 300,
+            "end_ms": i * 300 + 280,
+            "confidence": 0.9,
+            **overrides,
+        }
+        return {
+            "project_id": TEST_PROJECT,
+            "takes": [{
+                "take_id": "UP01",
+                "scene": "", "camera": "", "speaker": "",
+                "source_url": "uploads/x.mp4",
+                "lines": [{
+                    "line_id": 1, "text": text, "tone": "neutral", "tone_score": 0.0,
+                    "words": [word(w, i) for i, w in enumerate(spoken)],
+                }],
+            }],
+        }
+
+    hyphen = line_doc(
+        "introducing lafrey-he video factory",
+        ["introducing", "lafrey-", "he", "video", "factory"],
+    )
+    results.append(check("a hyphen split across words is NOT fatal", schema.validate(hyphen), []))
+    results.append(check("and is not even a note", schema.warnings(hyphen), []))
+
+    # Content is what matters, so genuine drift still surfaces -- as a note, not a refusal
+    drift = line_doc("a completely different sentence", ["hello", "there"])
+    results.append(check("real drift is still not fatal", schema.validate(drift), []))
+    results.append(
+        check(
+            "but it is reported",
+            schema.warnings(drift)[0].splitlines()[0],
+            "UP01/1: text and words describe different speech",
+        )
+    )
+
+    # Fatal stays fatal: an empty range would ask ffmpeg for a zero-length cut
+    empty = line_doc("one two", ["one", "two"], start_ms=500, end_ms=500)
+    results.append(
+        check(
+            "a zero-length word IS fatal",
+            len([p for p in schema.validate(empty) if "zero or negative" in p]) > 0,
+            True,
+        )
+    )
+
+    duplicate = line_doc("one", ["one"])
+    duplicate["takes"][0]["lines"].append(dict(duplicate["takes"][0]["lines"][0]))
+    results.append(
+        check(
+            "a duplicate line_id IS fatal",
+            any("appears twice" in p for p in schema.validate(duplicate)),
+            True,
+        )
+    )
+
+    # Heuristics are notes: real speech produces both of these
+    long_word = line_doc("aaah", ["aaah"], start_ms=0, end_ms=4000)
+    results.append(check("a four second word is not fatal", schema.validate(long_word), []))
+    results.append(
+        check(
+            "it is a note",
+            any("long for one word" in n for n in schema.warnings(long_word)),
+            True,
+        )
+    )
+
+    overlapping = {
+        "project_id": TEST_PROJECT,
+        "takes": [{
+            "take_id": "UP02", "scene": "", "camera": "", "speaker": "",
+            "source_url": "uploads/y.mp4",
+            "lines": [{
+                "line_id": 1, "text": "one two", "tone": "neutral", "tone_score": 0.0,
+                "words": [
+                    {"word": "one", "start_ms": 0, "end_ms": 300, "confidence": 0.9},
+                    {"word": "two", "start_ms": 250, "end_ms": 600, "confidence": 0.9},
+                ],
+            }],
+        }],
+    }
+    results.append(check("overlapping words are not fatal", schema.validate(overlapping), []))
+    results.append(
+        check(
+            "overlap is a note",
+            any("overlaps the previous" in n for n in schema.warnings(overlapping)),
+            True,
+        )
+    )
+
+    # And the whole point: a document with notes can still be ingested
+    written = ingest.ingest(client, overlapping)
+    results.append(check("a document with notes still ingests", written, 2))
+    client.command(queries.DROP_PROJECT, parameters={"project": TEST_PROJECT})
+    client.insert("words", schema.flatten_rows(doc), column_names=schema.COLUMNS)
 
     print("\n=== line words (word-level tweezing) ===")
     # Phrase search returns the matched range; this returns the sentence around it, which

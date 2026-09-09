@@ -21,7 +21,7 @@ media ──▶ transcribe.py ──▶ tone.py ──▶ ingest.py ──▶ Cl
 | File | Job |
 | --- | --- |
 | `__init__.py` | Package, because `server/` shares the schema and the SQL. |
-| `schema.py` | The data contract. Normalisation, flattening, validation, alignment report. Single source of truth. |
+| `schema.py` | The data contract. Normalisation, flattening, fatal validation, notes, alignment report. Single source of truth. |
 | `fixture.json` | Hand-written example of the contract. The pipeline has to produce this shape. |
 | `transcribe.py` | Media → words with millisecond timing. |
 | `tone.py` | One Gemini call per take → a delivery label per line. |
@@ -122,6 +122,32 @@ transcripts and neither can be resolved without knowing the language of each wor
 search key folds them together. The `word` column keeps the original spelling, and that is
 what appears on screen.
 
+### Fatal problems and notes are not the same thing
+
+`schema.validate()` returns only what makes a document **unusable**: a missing key, a
+duplicate `line_id`, a word whose range is empty. `schema.warnings()` returns everything
+softer. Callers refuse on the first and print the second.
+
+That split was not there, and it cost a real upload. Whisper's segment text kept
+`state-of-the-art` whole while its word timestamps split it at the hyphens, so the text
+read `...state of the r-24-hour service` and the word list read `...state of the r 24 hour
+service`. Same speech, two tokenisations — and the whole take was refused after the user
+had already paid for transcription.
+
+Two things were wrong. The comparison was token-based when word boundaries are not
+something this contract cares about; it now compares letters and digits only. And more
+importantly the severity was wrong: **the line `text` never reaches ClickHouse.** The table
+stores one row per word and has no line-text column, so `text` exists for display and for
+the tone prompt. Voiding correct rows over a field that is not stored is indefensible.
+
+Three checks moved to notes, because ordinary footage produces all of them:
+
+| Note | Why it is not fatal |
+| --- | --- |
+| Text and words describe different speech | Only fires on genuine drift now. `words` is what gets indexed and cut; the text is display. |
+| A word longer than three seconds | A heuristic. A drawn-out word, or one Whisper stretched across a pause, is real. |
+| Words overlapping | faster-whisper emits small overlaps, and every word range is cut independently. |
+
 ### Video is not a special case
 
 Nothing special-cases it. Whisper reads the audio track through ffmpeg, the player element
@@ -137,7 +163,7 @@ knowing before you claim millisecond precision about a video render.
 ## Verification
 
 ```powershell
-& $py -m pipeline.test_queries                    # SQL correctness (20)
+& $py -m pipeline.test_queries                    # SQL and contract (31)
 & $py -m doctest pipeline\schema.py               # normalisation
 & $py -m pipeline.search --phrase "..." --compare scratch\T01.json
 ```

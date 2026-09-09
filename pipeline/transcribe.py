@@ -199,11 +199,19 @@ def main() -> int:
 
     problems = schema.validate(doc)
     if problems:
-        print(f"\n=== {len(problems)} warnings ===")
+        print(f"\n=== {len(problems)} contract problems ===")
         for problem in problems:
             print(f"  ! {problem}")
     else:
         print("\nContract validation clean.")
+
+    notes = schema.warnings(doc)
+    if notes:
+        # Not problems. Printed because they are worth a look on real footage, and
+        # deliberately not fatal because they fire on it routinely.
+        print(f"\n=== {len(notes)} notes ===")
+        for note in notes:
+            print(f"  - {note}")
 
     print("\nTranscript:")
     for take in doc["takes"]:
