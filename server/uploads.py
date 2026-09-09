@@ -1,4 +1,4 @@
-"""Upload a recording from the browser and get it into the library.
+"""Upload a recording from the browser or download from YouTube and get it into the library.
 
 Mirrors render.py's shape on purpose: an in-memory job, a background thread, a status
 endpoint the client polls. Transcription is CPU work of unpredictable length, so it cannot
@@ -7,14 +7,14 @@ things to reason about.
 
 WHAT MAKES THIS DIFFERENT FROM RENDER
 Render's input is a set of ids that already exist in the database, so validation is a
-lookup. Here the input is a file the visitor chose, which means:
+lookup. Here the input is a file the visitor chose or a YouTube link, which means:
 
   - The stored name is generated, never taken from the upload. A browser sends whatever
     filename it likes, including one with slashes in it.
   - The file lands in UPLOAD_DIR, not in the demo corpus. The image layer is read-only on
     Cloud Run, and visitor files must not be able to reach the committed repository.
-  - Duration is measured with ffmpeg BEFORE anything expensive starts, because the cap has
-    to be enforced on the real file rather than on what the request claimed.
+  - Duration is measured with ffmpeg/yt-dlp BEFORE anything expensive starts, because the cap has
+    to be enforced on the real media rather than on what the request claimed.
   - The take goes into a project derived from the session cookie, so one visitor's footage
     does not show up in everyone else's library.
 
@@ -57,7 +57,7 @@ class Job:
     take_id: str
     filename: str = ""              # what the visitor called it, for display only
     status: str = "queued"          # queued -> running -> done | failed
-    stage: str = ""                 # saved | transcribing | labelling | writing
+    stage: str = ""                 # saved | downloading | transcribing | labelling | writing
     seconds: float = 0.0
     language: str = ""
     lines: int = 0
@@ -178,81 +178,103 @@ def credits_for(seconds: float) -> int:
     return max(1, math.ceil(seconds / 60)) * config.COST_INGEST_PER_MINUTE
 
 
-# --- The job ----------------------------------------------------------------
+# --- The job & Pipeline -----------------------------------------------------
+
+
+def _process_ingest(job: Job, media: Path, language: str, speaker: str = "") -> None:
+    """Shared pipeline: transcribe, label, validate, ingest into ClickHouse."""
+    from pipeline import tone, transcribe
+
+    job.stage = "transcribing"
+
+    doc, stats = transcribe.transcribe(
+        media,
+        take_id=job.take_id,
+        project_id=job.project,
+        speaker=speaker,
+        source_url=f"{config.UPLOAD_URL_PREFIX}{media.name}",
+        model_size=config.UPLOAD_MODEL,
+        language=language or None,
+    )
+    job.language = stats["language"]
+
+    lines = doc["takes"][0]["lines"]
+    if not lines:
+        raise UploadRejected(
+            "No speech was found in that file. Wrong language, or a silent track?"
+        )
+
+    job.stage = "labelling"
+    try:
+        tone.apply_tones(doc, media, dry_run=not tone_available())
+    except Exception as error:
+        print(f"upload {job.id}: tone pass failed, writing neutral: {error}")
+        tone.apply_tones(doc, None, dry_run=True)
+
+    problems = schema.validate(doc)
+    if problems:
+        raise UploadRejected("The transcript did not match the contract: " + problems[0])
+
+    for note in schema.warnings(doc):
+        print(f"upload {job.id}: {note}")
+
+    job.stage = "writing"
+    client = ch.client()
+    from pipeline import db
+
+    db.create_table(client)
+    job.words = ingest_doc.ingest(client, doc)
+    job.lines = len(lines)
+
+    config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    (config.UPLOAD_DIR / f"{media.stem}.json").write_text(
+        json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    job.status = "done"
+    job.stage = ""
 
 
 def run_blocking(job: Job, media: Path, language: str) -> None:
-    """Transcribe, label, write. Runs on a worker thread."""
-    from pipeline import tone, transcribe
-
+    """Transcribe, label, write from uploaded file."""
     try:
         job.status = "running"
-        job.stage = "transcribing"
-
-        doc, stats = transcribe.transcribe(
-            media,
-            take_id=job.take_id,
-            project_id=job.project,
-            speaker="",
-            # The marker tells the URL builder and the render path which directory this
-            # lives in. Only the basename is stored; resolution re-checks the boundary.
-            source_url=f"{config.UPLOAD_URL_PREFIX}{media.name}",
-            model_size=config.UPLOAD_MODEL,
-            language=language or None,
-        )
-        job.language = stats["language"]
-
-        lines = doc["takes"][0]["lines"]
-        if not lines:
-            raise UploadRejected(
-                "No speech was found in that file. Wrong language, or a silent track?"
-            )
-
-        job.stage = "labelling"
-        try:
-            # Without a key this writes neutral. The library is still fully searchable;
-            # only the delivery filter and the ranking lose their meaning.
-            tone.apply_tones(doc, media, dry_run=not tone_available())
-        except Exception as error:
-            # The transcription is the expensive part and it already succeeded. Losing it
-            # because the tone call failed would be the wrong trade.
-            print(f"upload {job.id}: tone pass failed, writing neutral: {error}")
-            tone.apply_tones(doc, None, dry_run=True)
-
-        problems = schema.validate(doc)
-        if problems:
-            raise UploadRejected("The transcript did not match the contract: " + problems[0])
-
-        # Soft findings are logged, never a reason to refuse. They fire on ordinary
-        # footage — a hyphen tokenised differently, a drawn-out word, a small overlap —
-        # and refusing a paid ingest over any of those is indefensible.
-        for note in schema.warnings(doc):
-            print(f"upload {job.id}: {note}")
-
-        job.stage = "writing"
-        client = ch.client()
-        from pipeline import db
-
-        db.create_table(client)
-        job.words = ingest_doc.ingest(client, doc)
-        job.lines = len(lines)
-
-        # Kept next to the media so the take survives a ClickHouse reset without paying
-        # for transcription again.
-        config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        (config.UPLOAD_DIR / f"{media.stem}.json").write_text(
-            json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
-
-        job.status = "done"
-        job.stage = ""
+        _process_ingest(job, media, language)
     except Exception as error:
         job.status = "failed"
         job.error = str(error)
-        # A failed ingest leaves nothing behind: the file is no use without its transcript
-        # and keeping it would just fill the disk.
         media.unlink(missing_ok=True)
-        # The work was not delivered, so the credit goes back.
+        if job.charged:
+            sessions.refund(job.session_id, job.charged, f"ingest failed: {job.take_id}")
+            job.charged = 0
+    finally:
+        job.finished_at = time.time()
+
+
+def run_youtube_blocking(job: Job, url: str, max_duration_s: int, language: str) -> None:
+    """Downloads YouTube video and ingests it."""
+    from pipeline import youtube
+
+    media: Path | None = None
+    try:
+        job.status = "running"
+        job.stage = "downloading"
+
+        config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        filename_stem = stored_name(job.take_id, "").rstrip(".")
+        media, meta = youtube.download(
+            url,
+            config.UPLOAD_DIR,
+            filename_stem=filename_stem,
+            max_duration_s=max_duration_s,
+        )
+        job.seconds = meta["duration"]
+        _process_ingest(job, media, language, speaker=meta.get("uploader", "")[:32])
+    except Exception as error:
+        job.status = "failed"
+        job.error = str(error)
+        if media and media.is_file():
+            media.unlink(missing_ok=True)
         if job.charged:
             sessions.refund(job.session_id, job.charged, f"ingest failed: {job.take_id}")
             job.charged = 0
@@ -270,7 +292,11 @@ async def start(job: Job, media: Path, language: str) -> None:
     await asyncio.to_thread(run_blocking, job, media, language)
 
 
-# --- Receiving the file -----------------------------------------------------
+async def start_youtube(job: Job, url: str, max_duration_s: int, language: str) -> None:
+    await asyncio.to_thread(run_youtube_blocking, job, url, max_duration_s, language)
+
+
+# --- Receiving the file & YouTube -------------------------------------------
 
 
 def takes_in_project(project: str) -> int:
@@ -288,15 +314,7 @@ def takes_in_project(project: str) -> int:
 
 
 async def receive(upload, session_id: str, label: str) -> tuple[Path, float, str]:
-    """Streams the upload to disk and validates it. Returns (path, duration, take_id).
-
-    Nothing is charged here. Validation happens against the file that actually arrived,
-    which is the only version of it worth trusting: the declared content type is a hint
-    and the declared length is a promise.
-
-    The cheap refusals come first — container, concurrency, per-session count — so a
-    hundred megabytes are not streamed to disk before finding out the answer is no.
-    """
+    """Streams the upload to disk and validates it. Returns (path, duration, take_id)."""
     if active_for_session(session_id) >= config.MAX_CONCURRENT_INGESTS_PER_SESSION:
         raise UploadRejected(
             "An upload is already being processed in this session. Wait for it to finish."
@@ -329,9 +347,6 @@ async def receive(upload, session_id: str, label: str) -> tuple[Path, float, str
                 if not chunk:
                     break
                 written += len(chunk)
-                # Enforced while streaming, not from the Content-Length header: a client
-                # can claim any length it likes, and by the time a lie is obvious the
-                # disk is already full.
                 if written > limit:
                     raise UploadRejected(
                         f"Larger than the {config.MAX_UPLOAD_MB} MB limit."
@@ -352,6 +367,44 @@ async def receive(upload, session_id: str, label: str) -> tuple[Path, float, str
         raise
 
     return target, seconds, take_id
+
+
+async def receive_youtube(
+    url: str, session_id: str, label: str, max_duration: int = 180
+) -> tuple[dict, float, str]:
+    """Validates YouTube URL and fetches info. Returns (info, duration, take_id)."""
+    from pipeline import youtube
+
+    if active_for_session(session_id) >= config.MAX_CONCURRENT_INGESTS_PER_SESSION:
+        raise UploadRejected(
+            "An upload is already being processed in this session. Wait for it to finish."
+        )
+
+    if not youtube.is_youtube_url(url):
+        raise UploadRejected("Not a valid YouTube video or shorts URL.")
+
+    project = config.session_project(session_id)
+    already = takes_in_project(project)
+    if already >= config.MAX_UPLOADS_PER_SESSION:
+        raise UploadRejected(
+            f"This session already holds {already} uploads, which is the limit."
+        )
+
+    try:
+        info = await asyncio.to_thread(youtube.get_info, url)
+    except Exception as error:
+        raise UploadRejected(f"Could not read YouTube info: {error}")
+
+    duration = float(info.get("duration", 0.0))
+    cap = float(max_duration or config.MAX_UPLOAD_SECONDS)
+    effective_seconds = min(duration if duration > 0 else cap, cap, float(config.MAX_UPLOAD_SECONDS))
+    if effective_seconds <= 0:
+        effective_seconds = float(config.MAX_UPLOAD_SECONDS)
+
+    video_id = info.get("id") or youtube.extract_video_id(url)
+    take_id = take_id_for(label or f"YT_{video_id}", already)
+
+    return info, effective_seconds, take_id
 
 
 def enqueue(session_id: str, take_id: str, filename: str, seconds: float) -> Job:

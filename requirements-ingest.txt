@@ -22,6 +22,9 @@ faster-whisper==1.1.1
 # environment. Pinned explicitly, otherwise the first run is a ModuleNotFoundError.
 requests==2.34.2
 
+# YouTube video/audio download (pipeline/youtube.py and /api/upload/youtube)
+yt-dlp==2026.8.19
+
 # --- faster-whisper's own dependencies, pinned on purpose ---
 #
 # These are transitive, so pip would resolve them itself. Two reasons not to let it.

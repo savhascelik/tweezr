@@ -150,6 +150,13 @@ export function uploadMedia(file, { label = "", language = "", onProgress } = {}
   });
 }
 
+export function uploadYouTube({ url, label = "", language = "", max_duration = 180 } = {}) {
+  return request("/api/upload/youtube", {
+    method: "POST",
+    body: JSON.stringify({ url, label, language, max_duration }),
+  });
+}
+
 /** Polls until the ingest settles. Whisper on CPU takes seconds to minutes. */
 export async function waitForUpload(jobId, { intervalMs = 1000, timeoutMs = 600000 } = {}) {
   const deadline = Date.now() + timeoutMs;

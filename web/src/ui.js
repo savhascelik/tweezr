@@ -434,6 +434,38 @@ export function createUI(root, handlers) {
     nodes.uploadLanguage.appendChild(el("option", { value: code, text: code }));
   }
 
+  nodes.uploadYouTubeUrl = el("input", {
+    type: "url",
+    class: "drop-field",
+    autocomplete: "off",
+    onKeyDown: (event) => {
+      if (event.key === "Enter" && nodes.uploadYouTubeUrl.value.trim()) {
+        event.preventDefault();
+        submitYouTube();
+      }
+    },
+  });
+  label(nodes.uploadYouTubeUrl, "upload.youtubePlaceholder", "placeholder");
+  label(nodes.uploadYouTubeUrl, "upload.youtubeField", "ariaLabel");
+
+  nodes.uploadYouTubeBtn = el("button", {
+    type: "button",
+    class: "btn btn-subtle",
+    onClick: () => submitYouTube(),
+  });
+  label(nodes.uploadYouTubeBtn, "upload.youtubeSubmit");
+
+  function submitYouTube() {
+    const url = nodes.uploadYouTubeUrl.value.trim();
+    if (!url) return;
+    handlers.onUploadYouTube?.(url, {
+      label: nodes.uploadLabel.value,
+      language: nodes.uploadLanguage.value,
+    });
+    nodes.uploadYouTubeUrl.value = "";
+    nodes.uploadLabel.value = "";
+  }
+
   nodes.uploadNote = el("span", { class: "drop-note" });
   nodes.uploadBar = el("div", { class: "drop-bar-fill" });
   nodes.uploadBarWrap = el("div", { class: "drop-bar" }, [nodes.uploadBar]);
@@ -488,6 +520,7 @@ export function createUI(root, handlers) {
     nodes.dropZone,
     nodes.uploadInput,
     el("div", { class: "drop-fields" }, [nodes.uploadLabel, nodes.uploadLanguage]),
+    el("div", { class: "drop-fields" }, [nodes.uploadYouTubeUrl, nodes.uploadYouTubeBtn]),
     nodes.uploadBarWrap,
     nodes.uploadState,
   ]);
@@ -1243,6 +1276,8 @@ export function createUI(root, handlers) {
     nodes.uploadInput.disabled = !upload.available || busy;
     nodes.uploadLabel.disabled = !upload.available || busy;
     nodes.uploadLanguage.disabled = !upload.available || busy;
+    nodes.uploadYouTubeUrl.disabled = !upload.available || busy;
+    nodes.uploadYouTubeBtn.disabled = !upload.available || busy;
 
     if (!upload.available) {
       nodes.uploadNote.textContent = upload.reason || t("upload.offFallback");

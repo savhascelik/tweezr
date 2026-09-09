@@ -349,6 +349,73 @@ async def upload(
     }
 
 
+class YouTubeUploadRequest(BaseModel):
+    url: str
+    label: str = ""
+    language: str = ""
+    max_duration: int = 180
+
+
+@router.post("/upload/youtube")
+async def upload_youtube(
+    payload: YouTubeUploadRequest,
+    request: Request,
+    response: Response,
+    background: BackgroundTasks,
+) -> dict:
+    """Downloads a YouTube video and ingests it into the session's library."""
+    session = current_session(request, response)
+
+    available, reason = upload_worker.transcription_available()
+    if not available:
+        raise HTTPException(status_code=503, detail=reason)
+
+    if payload.language and not re.fullmatch(r"[a-z]{2,3}", payload.language):
+        raise HTTPException(status_code=422, detail=f"Not a language code: {payload.language!r}")
+
+    try:
+        info, seconds, take_id = await upload_worker.receive_youtube(
+            payload.url, session["id"], payload.label, payload.max_duration
+        )
+    except upload_worker.UploadRejected as error:
+        raise HTTPException(status_code=422, detail=str(error))
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Could not prepare YouTube download: {error}")
+
+    try:
+        job = upload_worker.enqueue(
+            session["id"], take_id, info.get("title") or payload.url, seconds
+        )
+    except upload_worker.UploadRejected as error:
+        raise HTTPException(status_code=429, detail=str(error))
+
+    cost = upload_worker.credits_for(seconds)
+    try:
+        remaining = sessions.charge(
+            session["id"], cost, f"ingest youtube {job.take_id} ({seconds:.0f}s)"
+        )
+    except sessions.InsufficientCredits as error:
+        job.status = "failed"
+        job.error = "not enough credits"
+        raise HTTPException(
+            status_code=402,
+            detail=f"{error.needed} credits needed for {seconds:.0f} seconds, "
+            f"balance is {error.balance}.",
+        )
+
+    job.charged = cost
+    background.add_task(
+        upload_worker.start_youtube, job, payload.url, int(seconds), payload.language
+    )
+
+    session = sessions.get(session["id"]) or session
+    return {
+        **job.public(),
+        "credits_left": remaining,
+        "session": session_payload(session),
+    }
+
+
 @router.get("/upload/{job_id}")
 def upload_job(job_id: str, request: Request, response: Response) -> dict:
     session = current_session(request, response)

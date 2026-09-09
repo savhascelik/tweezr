@@ -513,6 +513,27 @@ def main() -> int:
             entries,
         )
 
+    print("\n=== youtube ingest ===")
+    from pipeline import youtube
+    check("valid youtube url", youtube.is_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), True)
+    check("valid youtu.be url", youtube.is_youtube_url("https://youtu.be/dQw4w9WgXcQ"), True)
+    check("valid shorts url", youtube.is_youtube_url("https://youtube.com/shorts/dQw4w9WgXcQ"), True)
+    check("invalid youtube url", youtube.is_youtube_url("https://vimeo.com/12345"), False)
+    check("extract video id", youtube.extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ"), "dQw4w9WgXcQ")
+    check("sanitize yt label", youtube.sanitize_label("Steve Jobs 2005 Speech"), "STEVE_JOBS_2005_SPEECH")
+
+    with TestClient(app) as client:
+        # Invalid YouTube URL rejected with 422
+        bad_yt = client.post("/api/upload/youtube", json={"url": "https://invalid-site.com/video"})
+        check("bad youtube url 422", bad_yt.status_code, 422)
+
+        # Bad language code rejected with 422
+        bad_lang = client.post(
+            "/api/upload/youtube",
+            json={"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "language": "english"},
+        )
+        check("bad language code 422", bad_lang.status_code, 422)
+
     print("\n=== render ===")
     if clickhouse is None:
         print("  SKIPPED    no ClickHouse")

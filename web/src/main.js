@@ -315,6 +315,81 @@ const actions = {
   },
 
   /**
+   * Brings a YouTube video into the library by URL.
+   */
+  async uploadYouTube(url, { label = "", language = "" } = {}) {
+    if (!url) return null;
+
+    store.setUpload({
+      status: "queued",
+      stage: "downloading",
+      progress: 0.1,
+      filename: url,
+      error: "",
+      result: null,
+    });
+    store.setStatus("busy", t("status.uploading", { name: url }));
+
+    let queued;
+    try {
+      queued = await api.uploadYouTube({ url, label, language });
+    } catch (error) {
+      store.setUpload({ status: "failed", error: error.message, progress: 0 });
+      store.setStatus("error", error.message);
+      throw error;
+    }
+
+    store.setUpload({
+      status: queued.status,
+      stage: queued.stage,
+      progress: 1,
+      takeId: queued.take_id,
+    });
+    if (queued.session) store.patch({ session: queued.session });
+    store.setStatus(
+      "busy",
+      t("status.ingesting", { seconds: Math.round(queued.media_seconds) })
+    );
+
+    try {
+      const job = await api.waitForUpload(queued.job_id);
+      if (job.status !== "done") {
+        throw new Error(job.error || `The ingest failed (${job.status})`);
+      }
+
+      const library = await api.libraryStats();
+      store.patch({ library: library.stats });
+      if (job.session) store.patch({ session: job.session });
+
+      actions.loadVocabulary({ take: job.take_id }).catch(() => {});
+
+      store.setUpload({
+        status: "done",
+        stage: "",
+        result: job,
+        count: (store.getState().upload.count ?? 0) + 1,
+      });
+      store.setStatus(
+        "ok",
+        t("status.ingested", {
+          take: job.take_id,
+          lines: job.lines,
+          language: job.language,
+        })
+      );
+      return job;
+    } catch (error) {
+      store.setUpload({ status: "failed", error: error.message });
+      store.setStatus("error", error.message);
+      api
+        .readSession()
+        .then((session) => store.patch({ session: session.session }))
+        .catch(() => {});
+      throw error;
+    }
+  },
+
+  /**
    * The in-page assistant. The candidates the agent found and the proposal it placed go
    * through the SAME store operations the WebMCP tools use — so both entry points change
    * one timeline, and the human never has to tell which was used.
@@ -454,6 +529,7 @@ const ui = createUI(root, {
   onRender: () => actions.render().catch(() => {}),
   onChat: (message) => actions.chat(message).catch(() => {}),
   onUpload: (file, options) => actions.upload(file, options).catch(() => {}),
+  onUploadYouTube: (url, options) => actions.uploadYouTube(url, options).catch(() => {}),
   onScope: (take) => actions.loadVocabulary({ take }).catch(() => {}),
 });
 

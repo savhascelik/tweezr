@@ -305,6 +305,7 @@ function mount() {
     onRender: record("render"),
     onChat: record("chat"),
     onUpload: record("upload"),
+    onUploadYouTube: record("onUploadYouTube"),
     onScope: record("scope"),
   });
   return { root, ui, calls };
@@ -921,6 +922,17 @@ console.log("\n=== bringing your own footage ===");
   const before = calls.length;
   zone.fire("drop", { dataTransfer: { files: [] } });
   check("an empty drop does nothing", calls.length, before);
+
+  // Pasting a YouTube URL reaches the handler
+  const ytInput = findAll(root, (node) => node.attributes.type === "url")[0];
+  checkThat("youtube input is present", Boolean(ytInput));
+  ytInput.value = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+  const ytBtn = findAll(root, (node) => node.classes.has("btn-subtle") && allText(node).includes("Ingest YouTube"))[0];
+  checkThat("youtube button is present", Boolean(ytBtn));
+  ytBtn.click();
+  check("youtube button click reached handler", calls.at(-1).name, "onUploadYouTube");
+  check("with the url", calls.at(-1).args[0], "https://www.youtube.com/watch?v=dQw4w9WgXcQ");
+  check("youtube input cleared", ytInput.value, "");
 }
 
 console.log("\n=== upload progress and stages ===");
