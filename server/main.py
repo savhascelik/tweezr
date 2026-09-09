@@ -50,6 +50,12 @@ def create_app() -> FastAPI:
         response.headers["Origin-Agent-Cluster"] = "?1"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
+        # Prevent aggressive browser caching of static scripts and markup
+        path = request.url.path
+        if path.endswith((".js", ".css", ".html")) or path in {"/", ""}:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         return response
 
     @app.get("/healthz")
