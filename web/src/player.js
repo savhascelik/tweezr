@@ -108,7 +108,7 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
     const element = active();
     const positionMs = element.currentTime * 1000;
 
-    if (positionMs >= segment.end_ms) {
+    if (positionMs >= segment.end_ms || element.ended) {
       advance(myGeneration);
       return;
     }
@@ -122,20 +122,29 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
   }
 
   async function advance(myGeneration) {
+    const prevIndex = activeIndex;
+    const prevElement = elements[prevIndex];
+
     cursor += 1;
     if (cursor >= segments.length) {
       stopFrame();
+      elements.forEach((element) => {
+        element.pause();
+      });
+      cursor = -1;
+      segments = [];
       onEnd?.();
       return;
     }
 
-    const prevIndex = activeIndex;
     const nextIndex = 1 - activeIndex;
     const nextElement = elements[nextIndex];
-    const prevElement = elements[prevIndex];
     const segment = segments[cursor];
 
     try {
+      // Pause the previous element immediately so unselected footage does not leak
+      prevElement.pause();
+
       // If preloading did not keep up we wait here: a gap, but never a skip
       await prepare(nextElement, segment);
       if (myGeneration !== generation) return;
@@ -145,10 +154,9 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
         return;
       }
 
-      // Smooth handoff: next element is actively playing, switch visibility and pause previous
+      // Smooth handoff: next element is actively playing, switch visibility
       activeIndex = nextIndex;
       showActive();
-      prevElement.pause();
     } catch (error) {
       if (myGeneration === generation) onError?.(error);
       return;

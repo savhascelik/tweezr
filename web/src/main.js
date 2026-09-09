@@ -648,10 +648,12 @@ const player = createPlayer({
   onProgress: ({ index, offsetMs }) => store.setPlayback({ index, offsetMs }),
   onSegmentChange: ({ index }) => store.setPlayback({ playing: true, index, offsetMs: 0 }),
   onEnd: () => {
+    player.stop();
     store.setPlayback({ playing: false, index: -1, offsetMs: 0 });
     store.setStatus("ok", t("status.playbackDone"));
   },
   onError: (error) => {
+    player.stop();
     store.setPlayback({ playing: false, index: -1, offsetMs: 0 });
     store.setStatus("error", error.message);
   },
