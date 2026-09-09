@@ -373,7 +373,7 @@ def main() -> int:
             check("kredi yoksa 402", denied.status_code, 402)
             check_that(
                 "402 aramanın bedava olduğunu söylüyor",
-                "kredi harcamıyor" in denied.json()["detail"],
+                "cost nothing" in denied.json()["detail"],
                 denied.json()["detail"],
             )
 
@@ -424,9 +424,17 @@ def main() -> int:
         check("durum 200", status.status_code, 200)
         body = status.json()
         check("sohbet kapalı", body["available"], False)
+        # Kod makine okunur, metin İngilizce yedek. İstemci kodu görüp kendi
+        # dilinde yazıyor, sunucu kullanıcının dilini bilmiyor.
+        check("sebep kodu", body["reason_code"], "no_api_key")
         check_that(
             "sebep anahtarı söylüyor",
             "GEMINI_API_KEY" in (body["reason"] or ""),
+            body["reason"],
+        )
+        check_that(
+            "kullanıcıya dönen mesaj İngilizce",
+            all(ord(ch) < 128 for ch in (body["reason"] or "")),
             body["reason"],
         )
         check_that(

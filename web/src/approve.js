@@ -19,16 +19,9 @@
  * kararını bekliyor. HITL kapısının somut hali bu: ajan isteyebiliyor, insan veriyor.
  */
 
-const AUTO_DECLINE_MS = 5 * 60 * 1000;
+import { seconds, t, toneLabel } from "./i18n.js";
 
-const TONE_LABELS = {
-  neutral: "nötr",
-  calm: "sakin",
-  tense: "gergin",
-  angry: "öfkeli",
-  whisper: "fısıltı",
-  shouted: "bağırma",
-};
+const AUTO_DECLINE_MS = 5 * 60 * 1000;
 
 const STYLE = `
   :host { all: initial; }
@@ -129,11 +122,14 @@ export function confirmRender({
   segments.forEach((segment, index) => {
     list.appendChild(
       el(doc, "li", {}, [
-        el(doc, "p", { class: "line", text: `${index + 1}. ${segment.text || "(metin yok)"}` }),
+        el(doc, "p", {
+          class: "line",
+          text: `${index + 1}. ${segment.text || t("approve.noText")}`,
+        }),
         el(doc, "div", { class: "prov" }, [
           el(doc, "span", { class: "take", text: segment.take_id }),
-          el(doc, "span", { text: `kam ${segment.camera || "-"}` }),
-          el(doc, "span", { text: TONE_LABELS[segment.tone] ?? segment.tone ?? "-" }),
+          el(doc, "span", { text: t("field.camera", { value: segment.camera || "-" }) }),
+          el(doc, "span", { text: segment.tone ? toneLabel(segment.tone) : "-" }),
           el(doc, "span", {
             class: "tc",
             text: `${timecode(segment.start_ms)} → ${timecode(segment.end_ms)}`,
@@ -144,21 +140,22 @@ export function confirmRender({
     );
   });
 
-  const cancel = el(doc, "button", { type: "button", text: "Vazgeç" });
-  const approve = el(doc, "button", { type: "button", class: "go", text: "Onayla ve render et" });
+  const cancel = el(doc, "button", { type: "button", text: t("approve.cancel") });
+  const approve = el(doc, "button", {
+    type: "button",
+    class: "go",
+    text: t("approve.confirm"),
+  });
 
-  const heading = el(doc, "h2", { id: "render-title", text: "Bu kesim render edilsin mi?" });
+  const heading = el(doc, "h2", { id: "render-title", text: t("approve.title") });
   const body = el(doc, "div", { class: "body" }, [
     list,
     el(doc, "p", {
       class: "cost",
-      text: `${cost} kredi düşecek. Bakiye ${credits} → ${credits - cost}.`,
+      text: t("approve.cost", { cost, before: credits, after: credits - cost }),
     }),
     requestedBy === "agent"
-      ? el(doc, "p", {
-          class: "who",
-          text: "Bu render'ı asistan istedi. Onayı sen veriyorsun.",
-        })
+      ? el(doc, "p", { class: "who", text: t("approve.agentRequested") })
       : null,
   ]);
 
@@ -166,9 +163,10 @@ export function confirmRender({
     el(doc, "header", {}, [
       heading,
       el(doc, "p", {
-        text:
-          `${segments.length} parça, toplam ${(totalMs / 1000).toFixed(2)} saniye. ` +
-          "Buraya kadar hiçbir şey render edilmedi; onaylarsan dosya üretilecek.",
+        text: t("approve.summary", {
+          count: segments.length,
+          duration: seconds(totalMs),
+        }),
       }),
     ]),
     body,
@@ -229,7 +227,7 @@ export function confirmRender({
     const timer = setTimeout(() => close(false), autoDeclineMs);
 
     doc.body.appendChild(host);
-    // Varsayılan odak Vazgeç'te: yanlışlıkla Enter'a basmak render başlatmasın
+    // Varsayılan odak iptalde: yanlışlıkla Enter'a basmak render başlatmasın
     cancel.focus();
   });
 }

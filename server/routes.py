@@ -77,7 +77,7 @@ def current_session(request: Request, response: Response) -> dict:
     if sessions.recent_sessions_from_ip(ip) >= config.MAX_SESSIONS_PER_IP_PER_HOUR:
         raise HTTPException(
             status_code=429,
-            detail="Bu adresten çok fazla yeni oturum açıldı. Biraz sonra tekrar dene.",
+            detail="Too many new sessions from this address. Try again shortly.",
         )
 
     session = sessions.create(ip=ip)
@@ -126,7 +126,7 @@ class FindLineRequest(BaseModel):
 def validate_project(project: str) -> str:
     # project_id istekten geliyor, allowlist dışına çıkmasın
     if project not in config.ALLOWED_PROJECTS:
-        raise HTTPException(status_code=404, detail=f"Bilinmeyen proje: {project}")
+        raise HTTPException(status_code=404, detail=f"Unknown project: {project}")
     return project
 
 
@@ -134,7 +134,7 @@ def validate_tone(tone: str) -> str:
     if tone and tone not in schema.TONES:
         raise HTTPException(
             status_code=422,
-            detail=f"Bilinmeyen ton: {tone}. Geçerli: {', '.join(schema.TONES)}",
+            detail=f"Unknown tone: {tone}. Allowed: {', '.join(schema.TONES)}",
         )
     return tone
 
@@ -147,11 +147,11 @@ def find_line(body: FindLineRequest, request: Request, response: Response) -> di
 
     words = schema.normalize_phrase(body.phrase)
     if not words:
-        raise HTTPException(status_code=422, detail="Cümle boş.")
+        raise HTTPException(status_code=422, detail="The phrase is empty.")
     if len(words) > config.MAX_PHRASE_WORDS:
         raise HTTPException(
             status_code=422,
-            detail=f"Cümle çok uzun ({len(words)} kelime, en fazla "
+            detail=f"The phrase is too long ({len(words)} words, at most "
             f"{config.MAX_PHRASE_WORDS}).",
         )
 
@@ -159,7 +159,7 @@ def find_line(body: FindLineRequest, request: Request, response: Response) -> di
         matches = search.phrase_search(clickhouse(), project, body.phrase, tone)
     except Exception as error:
         drop_client()
-        raise HTTPException(status_code=503, detail=f"Arama başarısız: {error}")
+        raise HTTPException(status_code=503, detail=f"Search failed: {error}")
 
     # Ürün mantığı: en iyi örnek önce. Ton skoru eşitse daha güvenli hizalama önce.
     matches.sort(key=lambda m: (-float(m["tone_score"]), m["take_id"], m["start_ms"]))
@@ -187,7 +187,7 @@ def library_stats(request: Request, response: Response, project: str = config.DE
         )
     except Exception as error:
         drop_client()
-        raise HTTPException(status_code=503, detail=f"Sorgu başarısız: {error}")
+        raise HTTPException(status_code=503, detail=f"Query failed: {error}")
 
     stats = dict(zip(result.column_names, result.result_rows[0]))
     return {"project": project, "stats": stats}
@@ -209,7 +209,7 @@ def word_occurrences(
         rows = search.word_search(clickhouse(), project, word, tone)
     except Exception as error:
         drop_client()
-        raise HTTPException(status_code=503, detail=f"Arama başarısız: {error}")
+        raise HTTPException(status_code=503, detail=f"Search failed: {error}")
 
     return {
         "word": schema.normalize_word(word),
@@ -264,7 +264,7 @@ async def render(
         if segment.end_ms <= segment.start_ms:
             raise HTTPException(
                 status_code=422,
-                detail=f"Geçersiz aralık: {segment.start_ms}-{segment.end_ms}",
+                detail=f"Invalid range: {segment.start_ms}-{segment.end_ms}",
             )
 
     # Sıra önemli: DOĞRULAMA önce, kredi sonra. Reddedilen bir istek için kredi
@@ -277,7 +277,7 @@ async def render(
         raise HTTPException(status_code=422, detail=str(error))
     except Exception as error:
         drop_client()
-        raise HTTPException(status_code=503, detail=f"Render planlanamadı: {error}")
+        raise HTTPException(status_code=503, detail=f"Could not plan the render: {error}")
 
     try:
         remaining = sessions.charge(
@@ -285,12 +285,12 @@ async def render(
         )
     except sessions.InsufficientCredits as error:
         job.status = "failed"
-        job.error = "kredi yetersiz"
+        job.error = "not enough credits"
         raise HTTPException(
             status_code=402,
             detail=(
-                f"Render {error.needed} kredi gerektiriyor, bakiye {error.balance}. "
-                "Arama, öneri ve önizleme kredi harcamıyor ve çalışmaya devam ediyor."
+                f"Rendering needs {error.needed} credit, balance is {error.balance}. "
+                "Search, proposal and preview cost nothing and keep working."
             ),
         )
 
@@ -312,7 +312,7 @@ def render_status(job_id: str, request: Request, response: Response) -> dict:
     job = render_worker.get(job_id)
     # Başka oturumun işini 404 olarak veriyoruz: var olduğunu bile söylemiyoruz
     if job is None or job.session_id != session["id"]:
-        raise HTTPException(status_code=404, detail="Böyle bir render işi yok.")
+        raise HTTPException(status_code=404, detail="No such render job.")
     return job.public()
 
 
@@ -321,9 +321,9 @@ def render_file(job_id: str, request: Request, response: Response):
     session = current_session(request, response)
     job = render_worker.get(job_id)
     if job is None or job.session_id != session["id"]:
-        raise HTTPException(status_code=404, detail="Böyle bir render işi yok.")
+        raise HTTPException(status_code=404, detail="No such render job.")
     if job.status != "done" or job.output is None or not job.output.is_file():
-        raise HTTPException(status_code=409, detail=f"Render hazır değil: {job.status}")
+        raise HTTPException(status_code=409, detail=f"The render is not ready: {job.status}")
 
     # StaticFiles ile mount ETMİYORUZ: çıktılar oturuma ait, dizin listelenebilir
     # ya da kimliği bilen herkes tarafından indirilebilir olmamalı.
@@ -348,16 +348,23 @@ class ChatRequest(BaseModel):
 
 @router.get("/chat/status")
 def chat_status(request: Request, response: Response) -> dict:
-    """Sohbet kullanılabilir mi. Arayüz kutuyu buna göre gösteriyor."""
+    """Sohbet kullanılabilir mi. Arayüz kutuyu buna göre gösteriyor.
+
+    `reason_code` makine okunur, `reason` insan okunur ve İngilizce. Sunucu
+    kullanıcının dilini bilmiyor; istemci kodu görüp kendi dilinde yazıyor ve
+    tanımadığı bir kod gelirse buradaki metne düşüyor.
+    """
     session = current_session(request, response)
+    available = agent.available()
     return {
-        "available": agent.available(),
-        "model": agent.MODEL if agent.available() else None,
+        "available": available,
+        "model": agent.MODEL if available else None,
         "messages_left": max(0, config.MAX_CHAT_MESSAGES - int(session.get("chat_used", 0))),
+        "reason_code": None if available else "no_api_key",
         "reason": None
-        if agent.available()
-        else "Sunucuda GEMINI_API_KEY tanımlı değil. Arama paneli, timeline ve "
-        "önizleme sohbet olmadan çalışıyor.",
+        if available
+        else "No GEMINI_API_KEY on the server. The search panel, timeline and preview "
+        "all work without the assistant.",
     }
 
 
@@ -369,8 +376,8 @@ async def chat(body: ChatRequest, request: Request, response: Response) -> dict:
         raise HTTPException(
             status_code=503,
             detail=(
-                "Sohbet devre dışı: sunucuda GEMINI_API_KEY yok. Arama paneli, "
-                "timeline, önizleme ve provenance sohbet olmadan çalışıyor."
+                "The assistant is off: no GEMINI_API_KEY on the server. The search "
+                "panel, timeline, preview and provenance all work without it."
             ),
         )
 
@@ -380,8 +387,8 @@ async def chat(body: ChatRequest, request: Request, response: Response) -> dict:
         raise HTTPException(
             status_code=429,
             detail=(
-                f"Bu oturumda sohbet sınırına ulaşıldı ({limit.limit} mesaj). "
-                "Arama paneli ve timeline çalışmaya devam ediyor."
+                f"This session reached the assistant limit ({limit.limit} messages). "
+                "The search panel and timeline keep working."
             ),
         )
 
@@ -390,7 +397,7 @@ async def chat(body: ChatRequest, request: Request, response: Response) -> dict:
     except agent.AgentUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error))
     except Exception as error:
-        raise HTTPException(status_code=502, detail=f"Ajan cevap veremedi: {error}")
+        raise HTTPException(status_code=502, detail=f"The assistant could not answer: {error}")
 
     return {
         **result,

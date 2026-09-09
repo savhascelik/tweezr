@@ -157,7 +157,7 @@ class InsufficientCredits(Exception):
     def __init__(self, needed: int, balance: int):
         self.needed = needed
         self.balance = balance
-        super().__init__(f"{needed} kredi gerekiyor, bakiye {balance}")
+        super().__init__(f"{needed} credit needed, balance is {balance}")
 
 
 def charge(session_id: str, amount: int, reason: str) -> int:
@@ -197,7 +197,7 @@ def charge(session_id: str, amount: int, reason: str) -> int:
 class ChatLimitReached(Exception):
     def __init__(self, limit: int):
         self.limit = limit
-        super().__init__(f"Bu oturum için sohbet sınırı ({limit}) doldu")
+        super().__init__(f"Assistant limit reached for this session ({limit})")
 
 
 def consume_chat(session_id: str, limit: int) -> int:

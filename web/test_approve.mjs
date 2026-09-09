@@ -10,6 +10,12 @@
  */
 
 import { confirmRender } from "./src/approve.js";
+import { setLocale } from "./src/i18n.js";
+
+// Dili sabitliyoruz. Node `navigator.language`'ı işletim sisteminden okuyor, yani
+// bu testler makinenin diline göre farklı sonuç verirdi — ilk koşuda tam bunu
+// yaptılar ve Türkçe düğme metni geldi. Tespit ayrıca aşağıda test ediliyor.
+setLocale("en");
 
 const results = [];
 
@@ -206,18 +212,18 @@ async function main() {
     checkThat("take kimliği görünüyor", texts.includes("S01_T03"), "");
     checkThat("timecode görünüyor", texts.includes("00:00.800"), "");
     checkThat("kaynak görünüyor", texts.includes("S01_T03.wav"), "");
-    checkThat("kredi bilgisi görünüyor", texts.includes("1 kredi"), "");
-    checkThat("bakiye değişimi görünüyor", texts.includes("10 → 9"), "");
+    checkThat("kredi bilgisi görünüyor", texts.includes("1 credit"), "");
+    checkThat("bakiye değişimi görünüyor", texts.includes("10 \u2192 9"), "");
     checkThat(
       "render edilmediği söyleniyor",
-      texts.includes("hiçbir şey render edilmedi"),
+      texts.includes("Nothing has been rendered"),
       ""
     );
 
     // Varsayılan odak Vazgeç'te: Enter'a basmak render başlatmasın
-    check("varsayılan odak Vazgeç", doc.activeElement.textContent, "Vazgeç");
+    check("varsayılan odak Vazgeç", doc.activeElement.textContent, "Cancel");
 
-    const cancel = find(root, (node) => node.textContent === "Vazgeç");
+    const cancel = find(root, (node) => node.textContent === "Cancel");
     cancel.click();
     check("vazgeçmek false döndü", await pending, false);
     check("pencere kaldırıldı", doc.body.children.length, 0);
@@ -229,7 +235,7 @@ async function main() {
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, cost: 1, credits: 3, doc });
     const { root } = shadowOf(doc);
-    find(root, (node) => node.textContent === "Onayla ve render et").click();
+    find(root, (node) => node.textContent === "Approve and render").click();
     check("onaylamak true döndü", await pending, true);
     check("pencere kaldırıldı", doc.body.children.length, 0);
   }
@@ -260,9 +266,9 @@ async function main() {
     const pending = confirmRender({ segments: SEGMENTS, requestedBy: "agent", doc });
     const { root } = shadowOf(doc);
     const texts = collectText(root).join("\n");
-    checkThat("render'ı asistanın istediği yazıyor", texts.includes("asistan istedi"), texts);
-    checkThat("onayın insanda olduğu yazıyor", texts.includes("Onayı sen veriyorsun"), "");
-    find(root, (node) => node.textContent === "Vazgeç").click();
+    checkThat("render'ı asistanın istediği yazıyor", texts.includes("assistant asked for this"), texts);
+    checkThat("onayın insanda olduğu yazıyor", texts.includes("You are the one approving"), "");
+    find(root, (node) => node.textContent === "Cancel").click();
     await pending;
   }
 
@@ -273,9 +279,9 @@ async function main() {
     const { root } = shadowOf(doc);
     checkThat(
       "insan isteğinde asistan notu yok",
-      !collectText(root).join("\n").includes("asistan istedi")
+      !collectText(root).join("\n").includes("assistant asked for this")
     );
-    find(root, (node) => node.textContent === "Vazgeç").click();
+    find(root, (node) => node.textContent === "Cancel").click();
     await pending;
   }
 
@@ -285,11 +291,32 @@ async function main() {
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, doc });
     const { root } = shadowOf(doc);
-    const approve = find(root, (node) => node.textContent === "Onayla ve render et");
+    const approve = find(root, (node) => node.textContent === "Approve and render");
     approve.click();
     approve.click();
     doc.fire("keydown", { key: "Escape", preventDefault: () => {} });
     check("ilk karar geçerli", await pending, true);
+  }
+
+  console.log("\n=== Türkçe katalog ===");
+  {
+    // Pencere ajanın gördüğü metni değiştirmiyor ama insanın gördüğünü değiştiriyor.
+    setLocale("tr");
+    const doc = createFakeDocument();
+    const pending = confirmRender({ segments: SEGMENTS, requestedBy: "agent", doc });
+    const { root } = shadowOf(doc);
+    const texts = collectText(root).join("\n");
+    checkThat("başlık çevrildi", texts.includes("render edilsin mi"), texts.slice(0, 200));
+    checkThat("kredi satırı çevrildi", texts.includes("kredi düşecek"), "");
+    checkThat("asistan notu çevrildi", texts.includes("asistan istedi"), "");
+    const cancel = find(root, (node) => node.textContent === "Vazgeç");
+    checkThat("iptal düğmesi çevrildi", Boolean(cancel));
+    // Provenance verisi çevrilmiyor: take kimliği ve timecode dilden bağımsız
+    checkThat("take kimliği aynı kaldı", texts.includes("S01_T03"), "");
+    checkThat("timecode aynı kaldı", texts.includes("00:00.800"), "");
+    cancel?.click();
+    check("Türkçe pencerede de vazgeçilebiliyor", await pending, false);
+    setLocale("en");
   }
 
   const passed = results.filter(Boolean).length;

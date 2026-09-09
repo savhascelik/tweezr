@@ -94,6 +94,21 @@ select {
   color: var(--dim);
 }
 
+/* Dil seçici. Üst bantta, küçük ve dikkat çekmeyen: jüri İngilizceyi hazır
+   buluyor, ihtiyaç duyan Türkçeye geçiyor. */
+.locale {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.78rem;
+  color: var(--dim);
+}
+
+.locale:hover {
+  color: var(--text);
+}
+
 /* --- Yerleşim --- */
 
 .layout {

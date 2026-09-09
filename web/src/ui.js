@@ -6,16 +6,13 @@
  * zehirli bir araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinlerin
  * kaynağı Whisper çıktısı ve kullanıcı dosya adları — yani kontrol etmediğimiz veri.
  * `el()` yardımcısı bilerek sadece textContent kabul ediyor.
+ *
+ * Tüm metin `render()` içinde yazılıyor, kuruluş anında değil. Böylece dil değişimi
+ * ekstra bir kod yolu gerektirmiyor: sabit etiketler ile dinamik metin aynı yerden
+ * geçiyor ve ikisinin ayrışması mümkün olmuyor.
  */
 
-const TONE_LABELS = {
-  neutral: "nötr",
-  calm: "sakin",
-  tense: "gergin",
-  angry: "öfkeli",
-  whisper: "fısıltı",
-  shouted: "bağırma",
-};
+import { LOCALES, getLocale, seconds, setLocale, t, toneLabel } from "./i18n.js";
 
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
@@ -41,13 +38,9 @@ function el(tag, props = {}, children = []) {
 function timecode(ms) {
   const total = Math.max(0, ms);
   const minutes = Math.floor(total / 60000);
-  const seconds = Math.floor((total % 60000) / 1000);
+  const secs = Math.floor((total % 60000) / 1000);
   const millis = Math.floor(total % 1000);
-  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
-}
-
-function duration(ms) {
-  return `${(ms / 1000).toFixed(2)} sn`;
+  return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 
 /** Fragmentin kaynağına giden bağlantı. Medya fragment'i tam o aralığı açıyor. */
@@ -58,7 +51,7 @@ function sourceHref(segment) {
 }
 
 function toneBadge(tone, score) {
-  const label = TONE_LABELS[tone] ?? tone;
+  const label = toneLabel(tone);
   const text = score ? `${label} ${Number(score).toFixed(2)}` : label;
   return el("span", { class: `tone tone-${tone}`, text });
 }
@@ -66,42 +59,78 @@ function toneBadge(tone, score) {
 export function createUI(root, handlers) {
   const nodes = {};
 
-  // --- Üst bant: oturum, kredi, WebMCP durumu ---
+  // Sabit etiketler: düğüm + katalog anahtarı + hangi özelliğe yazılacağı.
+  // applyLabels() bunları her render'da tazeliyor, dil değişimi bedavaya geliyor.
+  const localized = [];
+  function label(node, key, prop = "textContent") {
+    localized.push({ node, key, prop });
+    return node;
+  }
+  function applyLabels() {
+    for (const item of localized) item.node[item.prop] = t(item.key);
+  }
+
+  // --- Üst bant: oturum, kredi, WebMCP durumu, dil ---
   nodes.role = el("span", { class: "meta-value", text: "…" });
   nodes.credits = el("span", { class: "meta-value", text: "…" });
   nodes.library = el("span", { class: "meta-value", text: "…" });
-  nodes.webmcp = el("span", { class: "pill pill-off", text: "WebMCP yok" });
+  nodes.webmcp = el("span", { class: "pill pill-off" });
+
+  nodes.locale = el("select", {
+    class: "locale",
+    "aria-label": "Language",
+    onChange: (event) => setLocale(event.target.value),
+  });
+  for (const code of LOCALES) {
+    nodes.locale.appendChild(
+      label(el("option", { value: code }), `locale.${code}`)
+    );
+  }
+  nodes.locale.value = getLocale();
+  label(nodes.locale, "locale.label", "title");
 
   const bar = el("header", { class: "bar" }, [
     el("div", { class: "brand" }, [
-      el("strong", { text: "Replik arama ve kaba kurgu" }),
-      el("span", {
-        class: "brand-note",
-        text: "render etmeden öner, onaydan sonra üret",
-      }),
+      label(el("strong"), "app.title"),
+      label(el("span", { class: "brand-note" }), "app.tagline"),
     ]),
     el("div", { class: "meta" }, [
-      el("span", { class: "meta-item" }, [el("span", { class: "meta-key", text: "oturum" }), nodes.role]),
-      el("span", { class: "meta-item" }, [el("span", { class: "meta-key", text: "kredi" }), nodes.credits]),
-      el("span", { class: "meta-item" }, [el("span", { class: "meta-key", text: "kütüphane" }), nodes.library]),
+      el("span", { class: "meta-item" }, [
+        label(el("span", { class: "meta-key" }), "meta.session"),
+        nodes.role,
+      ]),
+      el("span", { class: "meta-item" }, [
+        label(el("span", { class: "meta-key" }), "meta.credits"),
+        nodes.credits,
+      ]),
+      el("span", { class: "meta-item" }, [
+        label(el("span", { class: "meta-key" }), "meta.library"),
+        nodes.library,
+      ]),
       nodes.webmcp,
+      nodes.locale,
     ]),
   ]);
 
   // --- Arama ---
+  // Yer tutucu çevrilmiyor: demo korpusundaki gerçek replik, dilden bağımsız.
   nodes.phrase = el("input", {
     type: "text",
     id: "phrase",
     placeholder: "I never asked for this",
     autocomplete: "off",
   });
+  nodes.anyTone = label(el("option", { value: "" }), "search.anyTone");
   nodes.tone = el("select", { id: "tone" }, [
-    el("option", { value: "", text: "her ton" }),
-    ...Object.entries(TONE_LABELS).map(([value, label]) =>
-      el("option", { value, text: label })
+    nodes.anyTone,
+    ...["neutral", "calm", "tense", "angry", "whisper", "shouted"].map((value) =>
+      label(el("option", { value }), `tone.${value}`)
     ),
   ]);
-  nodes.searchButton = el("button", { type: "submit", class: "primary", text: "Ara" });
+  nodes.searchButton = label(
+    el("button", { type: "submit", class: "primary" }),
+    "search.submit"
+  );
 
   const form = el(
     "form",
@@ -113,9 +142,9 @@ export function createUI(root, handlers) {
       },
     },
     [
-      el("label", { for: "phrase", text: "Replik" }),
+      label(el("label", { for: "phrase" }), "search.phraseLabel"),
       nodes.phrase,
-      el("label", { for: "tone", text: "Ton" }),
+      label(el("label", { for: "tone" }), "search.toneLabel"),
       nodes.tone,
       nodes.searchButton,
     ]
@@ -125,11 +154,8 @@ export function createUI(root, handlers) {
 
   // Bu panel WebMCP'siz tarayıcıda aynı akışı elle sürmek için var.
   const searchPanel = el("section", { class: "panel" }, [
-    el("h2", { text: "Ara" }),
-    el("p", {
-      class: "hint",
-      text: "Ajan aynı işi WebMCP araçlarıyla yapıyor. Bu panel araçlar yoksa da çalışsın diye burada.",
-    }),
+    label(el("h2"), "search.heading"),
+    label(el("p", { class: "hint" }), "search.hint"),
     form,
     nodes.status,
   ]);
@@ -138,15 +164,18 @@ export function createUI(root, handlers) {
   // Harici ajanın yerine geçmiyor; ajanı olmayan kullanıcı için. Anahtar yoksa
   // sebebi yazıp panele yönlendiriyor, sessizce kaybolmuyor.
   nodes.chatLog = el("div", { class: "chat-log" });
-  nodes.chatInput = el("input", {
-    type: "text",
-    id: "chat",
-    placeholder: "Bu repliğin daha sakin okunduğu take hangisi?",
-    autocomplete: "off",
-  });
-  nodes.chatSend = el("button", { type: "submit", class: "primary", text: "Sor" });
+  nodes.chatInput = label(
+    el("input", { type: "text", id: "chat", autocomplete: "off" }),
+    "assistant.placeholder",
+    "placeholder"
+  );
+  nodes.chatSend = label(
+    el("button", { type: "submit", class: "primary" }),
+    "assistant.send"
+  );
   nodes.chatLeft = el("span", { class: "count", text: "" });
   nodes.chatNote = el("p", { class: "hint", text: "" });
+  nodes.chatHeading = label(el("span"), "assistant.heading");
 
   const chatForm = el(
     "form",
@@ -164,47 +193,54 @@ export function createUI(root, handlers) {
   );
 
   nodes.chatPanel = el("section", { class: "panel" }, [
-    el("h2", {}, []),
+    el("h2", {}, [nodes.chatHeading, document.createTextNode(" "), nodes.chatLeft]),
     nodes.chatNote,
     nodes.chatLog,
     chatForm,
   ]);
-  nodes.chatPanel.firstChild.append(document.createTextNode("Asistan "), nodes.chatLeft);
 
   // --- Adaylar ---
   nodes.candidates = el("div", { class: "candidates" });
   nodes.candidateCount = el("span", { class: "count", text: "" });
   const candidatePanel = el("section", { class: "panel" }, [
-    el("h2", {}, []),
+    el("h2", {}, [
+      label(el("span"), "candidates.heading"),
+      document.createTextNode(" "),
+      nodes.candidateCount,
+    ]),
     nodes.candidates,
   ]);
-  candidatePanel.firstChild.append(document.createTextNode("Adaylar "), nodes.candidateCount);
 
   // --- Sahne ve timeline ---
   nodes.stage = el("div", { class: "stage" });
-  nodes.nowPlaying = el("p", { class: "now-playing", text: "Oynatılmıyor" });
+  nodes.nowPlaying = el("p", { class: "now-playing" });
   nodes.timeline = el("ol", { class: "timeline" });
   nodes.total = el("span", { class: "count", text: "" });
 
-  nodes.playButton = el("button", {
-    class: "primary",
-    text: "Öneriyi oynat",
-    onClick: () => handlers.onPlay(),
-  });
-  nodes.stopButton = el("button", { text: "Durdur", onClick: () => handlers.onStop() });
-  nodes.clearButton = el("button", {
-    text: "Temizle",
-    onClick: () => handlers.onClearTimeline(),
-  });
-  nodes.renderButton = el("button", {
-    class: "danger",
-    text: "Onayla ve render et",
-    onClick: () => handlers.onRender(),
-  });
+  nodes.playButton = label(
+    el("button", { class: "primary", onClick: () => handlers.onPlay() }),
+    "timeline.play"
+  );
+  nodes.stopButton = label(
+    el("button", { onClick: () => handlers.onStop() }),
+    "timeline.stop"
+  );
+  nodes.clearButton = label(
+    el("button", { onClick: () => handlers.onClearTimeline() }),
+    "timeline.clear"
+  );
+  nodes.renderButton = label(
+    el("button", { class: "danger", onClick: () => handlers.onRender() }),
+    "timeline.render"
+  );
   nodes.renderResult = el("p", { class: "render-result" });
 
   const timelinePanel = el("section", { class: "panel" }, [
-    el("h2", {}, []),
+    el("h2", {}, [
+      label(el("span"), "timeline.heading"),
+      document.createTextNode(" "),
+      nodes.total,
+    ]),
     nodes.stage,
     nodes.nowPlaying,
     nodes.timeline,
@@ -216,23 +252,25 @@ export function createUI(root, handlers) {
     ]),
     nodes.renderResult,
   ]);
-  timelinePanel.firstChild.append(document.createTextNode("Kaba kurgu "), nodes.total);
 
-  root.append(bar, el("main", { class: "layout" }, [
-    el("div", { class: "column" }, [nodes.chatPanel, searchPanel, candidatePanel]),
-    el("div", { class: "column" }, [timelinePanel]),
-  ]));
+  root.append(
+    bar,
+    el("main", { class: "layout" }, [
+      el("div", { class: "column" }, [nodes.chatPanel, searchPanel, candidatePanel]),
+      el("div", { class: "column" }, [timelinePanel]),
+    ])
+  );
 
   function renderChat(state) {
     const chat = state.chat;
     nodes.chatInput.disabled = !chat.available || chat.busy;
     nodes.chatSend.disabled = !chat.available || chat.busy;
     nodes.chatLeft.textContent = chat.available
-      ? `(${chat.messagesLeft} mesaj hakkı)`
-      : "(kapalı)";
+      ? t("assistant.messagesLeft", { count: chat.messagesLeft })
+      : t("assistant.off");
     nodes.chatNote.textContent = chat.available
-      ? "Doğal dille sor. Asistan kütüphanede arıyor ve timeline'a öneri koyuyor; render etmiyor."
-      : chat.reason || "Asistan kapalı.";
+      ? t("assistant.hint")
+      : chat.reason || t("assistant.offFallback");
 
     nodes.chatLog.replaceChildren();
     for (const message of chat.messages) {
@@ -254,7 +292,9 @@ export function createUI(root, handlers) {
       nodes.chatLog.appendChild(bubble);
     }
     if (chat.busy) {
-      nodes.chatLog.appendChild(el("p", { class: "hint", text: "Asistan düşünüyor…" }));
+      nodes.chatLog.appendChild(
+        el("p", { class: "hint", text: t("assistant.thinking") })
+      );
     }
     nodes.chatLog.scrollTop = nodes.chatLog.scrollHeight;
   }
@@ -267,7 +307,7 @@ export function createUI(root, handlers) {
 
     if (!state.candidates.length) {
       nodes.candidates.appendChild(
-        el("p", { class: "empty", text: "Henüz arama yapılmadı." })
+        el("p", { class: "empty", text: t("candidates.empty") })
       );
       return;
     }
@@ -279,19 +319,22 @@ export function createUI(root, handlers) {
           el("div", { class: "candidate-head" }, [
             el("span", { class: "rank", text: `#${candidate.rank}` }),
             el("span", { class: "take", text: candidate.take_id }),
-            el("span", { class: "dim", text: `kam ${candidate.camera || "-"}` }),
+            el("span", {
+              class: "dim",
+              text: t("field.camera", { value: candidate.camera || "-" }),
+            }),
             toneBadge(candidate.tone, candidate.tone_score),
-            el("span", { class: "dim", text: duration(candidate.duration_ms) }),
+            el("span", { class: "dim", text: seconds(candidate.duration_ms) }),
           ]),
           el("p", { class: "line", text: candidate.text }),
           el("div", { class: "candidate-actions" }, [
             el("button", {
-              text: "Önizle",
+              text: t("candidates.preview"),
               onClick: () => handlers.onPreview(candidate),
             }),
             el("button", {
               class: "primary",
-              text: inTimeline ? "Tekrar ekle" : "Kurguya ekle",
+              text: inTimeline ? t("candidates.addAgain") : t("candidates.add"),
               onClick: () => handlers.onAdd(candidate),
             }),
           ]),
@@ -304,7 +347,10 @@ export function createUI(root, handlers) {
     nodes.timeline.replaceChildren();
     const total = state.timeline.reduce((sum, segment) => sum + segment.duration_ms, 0);
     nodes.total.textContent = state.timeline.length
-      ? `(${state.timeline.length} parça, ${duration(total)})`
+      ? t("timeline.summary", {
+          count: state.timeline.length,
+          duration: seconds(total),
+        })
       : "";
 
     const hasSegments = state.timeline.length > 0;
@@ -314,11 +360,7 @@ export function createUI(root, handlers) {
 
     if (!hasSegments) {
       nodes.timeline.appendChild(
-        el("li", { class: "empty" }, [
-          el("p", {
-            text: "Kurgu boş. Aday listesinden ekle, ya da ajana söyle.",
-          }),
-        ])
+        el("li", { class: "empty" }, [el("p", { text: t("timeline.empty") })])
       );
       return;
     }
@@ -332,7 +374,7 @@ export function createUI(root, handlers) {
             el("p", { class: "line", text: segment.text }),
             el("button", {
               class: "ghost",
-              title: "Bu parçayı çıkar",
+              title: t("timeline.remove"),
               text: "×",
               onClick: () => handlers.onRemove(index),
             }),
@@ -343,63 +385,28 @@ export function createUI(root, handlers) {
           el("div", { class: "provenance" }, [
             el("span", { class: "prov-take", text: segment.take_id }),
             el("span", { class: "dim", text: segment.scene || "-" }),
-            el("span", { class: "dim", text: `kam ${segment.camera || "-"}` }),
+            el("span", {
+              class: "dim",
+              text: t("field.camera", { value: segment.camera || "-" }),
+            }),
             el("span", { class: "dim", text: segment.speaker || "-" }),
             toneBadge(segment.tone, segment.tone_score),
             el("span", {
               class: "timecode",
               text: `${timecode(segment.start_ms)} → ${timecode(segment.end_ms)}`,
             }),
-            el("span", { class: "dim", text: duration(segment.duration_ms) }),
+            el("span", { class: "dim", text: seconds(segment.duration_ms) }),
             el("a", {
               class: "source",
               href: sourceHref(segment),
               target: "_blank",
               rel: "noopener noreferrer",
-              text: "kaynağı aç",
+              text: t("timeline.openSource"),
             }),
           ]),
         ])
       );
     });
-  }
-
-  function render(state) {
-    if (state.session) {
-      nodes.role.textContent = state.session.role;
-      nodes.credits.textContent = String(state.session.credits);
-    }
-    if (state.library) {
-      const stats = state.library;
-      nodes.library.textContent = `${stats.takes} take, ${stats.words} kelime, ${stats.vocabulary} farklı`;
-    }
-
-    nodes.webmcp.textContent = state.webmcp.available
-      ? `WebMCP ${state.webmcp.registered} araç`
-      : "WebMCP yok — panel devrede";
-    nodes.webmcp.className = state.webmcp.available ? "pill pill-on" : "pill pill-off";
-
-    nodes.status.textContent = state.status.message;
-    nodes.status.className = `status status-${state.status.kind}`;
-
-    nodes.phrase.value === state.query.phrase || (nodes.phrase.value = state.query.phrase);
-    if (nodes.tone.value !== state.query.tone) nodes.tone.value = state.query.tone;
-
-    const playing = state.playback.playing;
-    nodes.stopButton.disabled = !playing;
-    if (playing && state.timeline[state.playback.index]) {
-      const segment = state.timeline[state.playback.index];
-      nodes.nowPlaying.textContent =
-        `${state.playback.index + 1}/${state.timeline.length}  ${segment.take_id}  ` +
-        `${timecode(segment.start_ms + state.playback.offsetMs)}`;
-    } else {
-      nodes.nowPlaying.textContent = "Oynatılmıyor";
-    }
-
-    renderChat(state);
-    renderCandidates(state);
-    renderTimeline(state);
-    renderJob(state);
   }
 
   function renderJob(state) {
@@ -413,28 +420,74 @@ export function createUI(root, handlers) {
 
     if (busy) {
       nodes.renderResult.appendChild(
-        el("span", { class: "dim", text: "Render sürüyor…" })
+        el("span", { class: "dim", text: t("render.running") })
       );
       return;
     }
     if (job.status === "failed") {
       nodes.renderResult.appendChild(
-        el("span", { class: "status-error", text: "Render başarısız." })
+        el("span", { class: "status-error", text: t("render.failed") })
       );
       return;
     }
     if (job.status === "done" && job.downloadUrl) {
       nodes.renderResult.append(
-        el("span", { class: "dim", text: "Hazır: " }),
+        el("span", { class: "dim", text: t("render.readyLabel") }),
         el("a", {
           class: "source",
           href: job.downloadUrl,
           // Aynı origin ve indirme; yeni sekme açmıyoruz
           download: "",
-          text: `roughcut (${job.mode === "video" ? "mp4" : "wav"})`,
+          text: t("render.download", {
+            format: job.mode === "video" ? "mp4" : "wav",
+          }),
         })
       );
     }
+  }
+
+  function render(state) {
+    applyLabels();
+    if (nodes.locale.value !== getLocale()) nodes.locale.value = getLocale();
+
+    if (state.session) {
+      nodes.role.textContent = state.session.role;
+      nodes.credits.textContent = String(state.session.credits);
+    }
+    if (state.library) {
+      nodes.library.textContent = t("meta.libraryValue", {
+        takes: state.library.takes,
+        words: state.library.words,
+        vocabulary: state.library.vocabulary,
+      });
+    }
+
+    nodes.webmcp.textContent = state.webmcp.available
+      ? t("webmcp.on", { count: state.webmcp.registered })
+      : t("webmcp.off");
+    nodes.webmcp.className = state.webmcp.available ? "pill pill-on" : "pill pill-off";
+
+    nodes.status.textContent = state.status.message;
+    nodes.status.className = `status status-${state.status.kind}`;
+
+    if (nodes.phrase.value !== state.query.phrase) nodes.phrase.value = state.query.phrase;
+    if (nodes.tone.value !== state.query.tone) nodes.tone.value = state.query.tone;
+
+    const playing = state.playback.playing;
+    nodes.stopButton.disabled = !playing;
+    if (playing && state.timeline[state.playback.index]) {
+      const segment = state.timeline[state.playback.index];
+      nodes.nowPlaying.textContent =
+        `${state.playback.index + 1}/${state.timeline.length}  ${segment.take_id}  ` +
+        `${timecode(segment.start_ms + state.playback.offsetMs)}`;
+    } else {
+      nodes.nowPlaying.textContent = t("timeline.notPlaying");
+    }
+
+    renderChat(state);
+    renderCandidates(state);
+    renderTimeline(state);
+    renderJob(state);
   }
 
   return { render, stage: nodes.stage };

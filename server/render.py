@@ -94,14 +94,14 @@ def resolve_media(source_url: str) -> Path:
     """
     name = Path(source_url.replace("\\", "/")).name
     if not name or name in (".", ".."):
-        raise RenderRejected(f"Kullanılamaz kaynak adı: {source_url!r}")
+        raise RenderRejected(f"Unusable source name: {source_url!r}")
 
     root = config.MEDIA_DIR.resolve()
     candidate = (root / name).resolve()
     if not candidate.is_relative_to(root):
-        raise RenderRejected(f"Medya yolu izinli dizinin dışında: {name!r}")
+        raise RenderRejected(f"Media path is outside the allowed directory: {name!r}")
     if not candidate.is_file():
-        raise RenderRejected(f"Medya bulunamadı: {name!r}")
+        raise RenderRejected(f"Media not found: {name!r}")
     return candidate
 
 
@@ -125,20 +125,20 @@ def take_bounds(project: str, take_ids: list[str]) -> dict[str, dict]:
 def plan(project: str, requested: list[dict]) -> tuple[list[dict], int]:
     """İsteği doğrulanmış render planına çevirir. (plan, toplam süre) döner."""
     if not requested:
-        raise RenderRejected("Kesim boş.")
+        raise RenderRejected("The cut is empty.")
 
     take_ids: list[str] = []
     for item in requested:
         # candidate_id formatı: take_id:line_id:start_ms
         take_id = str(item["candidate_id"]).split(":")[0]
         if not take_id:
-            raise RenderRejected(f"Kullanılamaz aday kimliği: {item['candidate_id']!r}")
+            raise RenderRejected(f"Unusable candidate id: {item['candidate_id']!r}")
         take_ids.append(take_id)
 
     bounds = take_bounds(project, sorted(set(take_ids)))
     unknown = sorted(set(take_ids) - set(bounds))
     if unknown:
-        raise RenderRejected(f"Kütüphanede olmayan take: {', '.join(unknown)}")
+        raise RenderRejected(f"take not in the library: {', '.join(unknown)}")
 
     steps: list[dict] = []
     total = 0
@@ -146,19 +146,19 @@ def plan(project: str, requested: list[dict]) -> tuple[list[dict], int]:
         start_ms = int(item["start_ms"])
         end_ms = int(item["end_ms"])
         if end_ms <= start_ms:
-            raise RenderRejected(f"Geçersiz aralık: {start_ms}-{end_ms}")
+            raise RenderRejected(f"Invalid range: {start_ms}-{end_ms}")
 
         limit = bounds[take_id]["last_ms"] + EDGE_TOLERANCE_MS
         if start_ms < 0 or end_ms > limit:
             raise RenderRejected(
-                f"{take_id} için aralık kaydın dışında: {start_ms}-{end_ms} ms, "
-                f"kayıt {limit} ms'e kadar"
+                f"Range falls outside take {take_id}: {start_ms}-{end_ms} ms, "
+                f"the recording runs to {limit} ms"
             )
 
         total += end_ms - start_ms
         if total > MAX_OUTPUT_MS:
             raise RenderRejected(
-                f"Çıktı çok uzun: {total} ms, en fazla {MAX_OUTPUT_MS} ms"
+                f"Output is too long: {total} ms, at most {MAX_OUTPUT_MS} ms"
             )
 
         steps.append(
@@ -247,7 +247,7 @@ def run_blocking(job: Job, steps: list[dict]) -> None:
                 timeout=FFMPEG_TIMEOUT_S,
             )
             if result.returncode != 0 or not staging.is_file():
-                raise RuntimeError((result.stderr or "ffmpeg başarısız").strip()[:500])
+                raise RuntimeError((result.stderr or "ffmpeg failed").strip()[:500])
 
             final = output_dir / f"{job.id}{suffix}"
             final.write_bytes(staging.read_bytes())
@@ -265,7 +265,7 @@ def enqueue(session_id: str, project: str, requested: list[dict]) -> tuple[Job, 
     """Doğrular ve iş kaydı oluşturur. Doğrulama başarısızsa kredi harcanmıyor."""
     if active_for_session(session_id) >= config.MAX_CONCURRENT_RENDERS_PER_SESSION:
         raise RenderRejected(
-            "Bu oturumda zaten bir render sürüyor. Bitmesini bekle."
+            "A render is already running in this session. Wait for it to finish."
         )
 
     steps, total = plan(project, requested)

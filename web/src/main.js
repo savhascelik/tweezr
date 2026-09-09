@@ -1,13 +1,15 @@
 /**
  * Bağlama noktası.
  *
- * `ready` promise'i dışa açılıyor: WebMCP araç kaydı (task 4) oturum ve kütüphane
- * hazır olduktan SONRA yapılmak zorunda. Geçen projede bunu atlayınca kayıt yarışı
- * yüzünden ajan boş araç listesi görmüştü.
+ * `ready` promise'i dışa açılıyor: WebMCP araç kaydı oturum ve kütüphane hazır
+ * olduktan SONRA yapılmak zorunda. Geçen projede bunu atlayınca kayıt yarışı
+ * yüzünden ajan boş araç listesi görmüştü. Araç açıklamaları da kredi bakiyesini
+ * içeriyor, yani oturum bilinmeden doğru açıklama üretilemez.
  */
 
 import * as api from "./api.js";
 import { confirmRender } from "./approve.js";
+import { applyDocumentLocale, onLocaleChange, seconds, t } from "./i18n.js";
 import { createPlayer } from "./player.js";
 import * as store from "./store.js";
 import { createUI } from "./ui.js";
@@ -15,24 +17,26 @@ import { installTools } from "./webmcp.js";
 
 const root = document.getElementById("app");
 
+applyDocumentLocale();
+
 const actions = {
   async search({ phrase, tone }) {
     const trimmed = (phrase ?? "").trim();
     if (!trimmed) {
-      store.setStatus("warn", "Aranacak bir replik yaz.");
+      store.setStatus("warn", t("status.needPhrase"));
       return { candidates: [], total: 0 };
     }
 
     store.patch({ query: { phrase: trimmed, tone: tone ?? "" } });
-    store.setStatus("busy", "Aranıyor…");
+    store.setStatus("busy", t("status.searching"));
     try {
       const result = await api.findLine({ phrase: trimmed, tone });
       store.patch({ candidates: result.candidates, session: result.session });
       store.setStatus(
         result.total ? "ok" : "warn",
         result.total
-          ? `${result.total} eşleşme. Arama kredi harcamıyor.`
-          : `"${result.phrase}" kütüphanede bulunamadı.`
+          ? t("status.found", { count: result.total })
+          : t("status.notFound", { phrase: result.phrase })
       );
       return result;
     } catch (error) {
@@ -43,19 +47,22 @@ const actions = {
 
   add(candidate) {
     const timeline = store.appendToTimeline(candidate);
-    store.setStatus("ok", `${candidate.take_id} eklendi. ${timeline.length} parça.`);
+    store.setStatus(
+      "ok",
+      t("status.added", { take: candidate.take_id, count: timeline.length })
+    );
     return timeline;
   },
 
   propose(candidates) {
     const timeline = store.setTimeline(candidates);
-    store.setStatus("ok", `${timeline.length} parçalık öneri hazır. Render edilmedi.`);
+    store.setStatus("ok", t("status.proposed", { count: timeline.length }));
     return timeline;
   },
 
   remove(index) {
     const timeline = store.removeFromTimeline(index);
-    store.setStatus("ok", `Parça çıkarıldı. ${timeline.length} kaldı.`);
+    store.setStatus("ok", t("status.removed", { count: timeline.length }));
     return timeline;
   },
 
@@ -68,16 +75,16 @@ const actions = {
   play() {
     const { timeline } = store.getState();
     if (!timeline.length) {
-      store.setStatus("warn", "Kurgu boş.");
+      store.setStatus("warn", t("status.emptyCut"));
       return;
     }
     store.setPlayback({ playing: true, index: 0, offsetMs: 0 });
-    store.setStatus("ok", "Sanal kırpma ile oynatılıyor — hiçbir şey render edilmedi.");
+    store.setStatus("ok", t("status.playing"));
     player.play(timeline);
   },
 
   preview(candidate) {
-    store.setStatus("ok", `${candidate.take_id} önizleniyor.`);
+    store.setStatus("ok", t("status.previewing", { take: candidate.take_id }));
     player.preview(candidate);
   },
 
@@ -98,12 +105,12 @@ const actions = {
       const result = await api.sendChat(message);
       const applied = store.applyAgentResult(result);
       if (applied.dropped.length) {
-        console.warn("asistan çözülemeyen aday kimliği döndürdü", applied.dropped);
+        console.warn("assistant returned unresolvable candidate ids", applied.dropped);
       }
 
       store.appendChatMessage({
         role: "agent",
-        text: result.reply || "(boş cevap)",
+        text: result.reply || t("assistant.emptyReply"),
         toolCalls: result.tool_calls ?? [],
       });
       store.setChat({ busy: false, messagesLeft: result.messages_left ?? 0 });
@@ -125,8 +132,8 @@ const actions = {
   async render({ requestedBy = "human" } = {}) {
     const { timeline, session } = store.getState();
     if (!timeline.length) {
-      store.setStatus("warn", "Kurgu boş.");
-      return { approved: false, reason: "timeline boş" };
+      store.setStatus("warn", t("status.emptyCut"));
+      return { approved: false, reason: "the timeline is empty" };
     }
 
     const cost = session?.costs?.commit_render ?? 1;
@@ -138,11 +145,11 @@ const actions = {
     });
 
     if (!approved) {
-      store.setStatus("warn", "Render onaylanmadı. Hiçbir şey üretilmedi, kredi harcanmadı.");
-      return { approved: false, reason: "insan onaylamadı" };
+      store.setStatus("warn", t("status.renderDeclined"));
+      return { approved: false, reason: "the editor declined" };
     }
 
-    store.setStatus("busy", "Render ediliyor…");
+    store.setStatus("busy", t("status.rendering"));
     store.patch({ render: { status: "queued", jobId: null, downloadUrl: null } });
     try {
       const queued = await api.requestRender(timeline);
@@ -153,7 +160,7 @@ const actions = {
 
       const job = await api.waitForRender(queued.job_id);
       if (job.status !== "done") {
-        throw new Error(job.error || `Render başarısız (${job.status})`);
+        throw new Error(job.error || `render failed (${job.status})`);
       }
 
       store.patch({
@@ -166,8 +173,12 @@ const actions = {
       });
       store.setStatus(
         "ok",
-        `Render bitti: ${job.segments} parça, ${(job.duration_ms / 1000).toFixed(2)} sn. ` +
-          `${queued.charged} kredi düştü, ${queued.credits_left} kaldı.`
+        t("status.renderDone", {
+          count: job.segments,
+          duration: seconds(job.duration_ms),
+          charged: queued.charged,
+          left: queued.credits_left,
+        })
       );
       return { approved: true, ...job, download_url: job.download_url };
     } catch (error) {
@@ -196,7 +207,7 @@ const player = createPlayer({
   onSegmentChange: ({ index }) => store.setPlayback({ playing: true, index, offsetMs: 0 }),
   onEnd: () => {
     store.setPlayback({ playing: false, index: -1, offsetMs: 0 });
-    store.setStatus("ok", "Oynatma bitti.");
+    store.setStatus("ok", t("status.playbackDone"));
   },
   onError: (error) => {
     store.setPlayback({ playing: false, index: -1, offsetMs: 0 });
@@ -205,16 +216,37 @@ const player = createPlayer({
 });
 
 store.subscribe((state) => ui.render(state));
+
+// Dil değişimi tüm metni tazeliyor. Ayrı bir kod yolu yok: `render` sabit
+// etiketleri de yazdığı için durum değişimiyle aynı şekilde ilerliyor.
+onLocaleChange(() => {
+  ui.render(store.getState());
+  refreshChatStatus().catch(() => {});
+});
+
 ui.render(store.getState());
 
 /**
- * Oturum, kütüphane VE araç kaydı tamamlanınca çözülüyor.
+ * Asistanın kapalı olma sebebini yerelleştiriyor.
  *
- * Sıra önemli: araçlar oturum ve kütüphane hazır olduktan SONRA kaydediliyor.
- * Geçen projede bunu atlayınca kayıt yarışı yüzünden ajan boş araç listesi görmüştü.
- * Ayrıca araç açıklamaları kredi bakiyesini içeriyor, yani oturum bilinmeden
- * doğru açıklama üretilemez.
+ * Sunucu makine okunur bir `reason_code` döndürüyor, metni istemci üretiyor —
+ * sunucu kullanıcının dilini bilmiyor ve bilmek zorunda da değil. Bilinmeyen bir
+ * kod gelirse sunucunun İngilizce metnine düşüyoruz, boş bırakmıyoruz.
  */
+async function refreshChatStatus() {
+  const chat = await api.chatStatus();
+  const localized = chat.reason_code
+    ? t(`assistant.reason.${chat.reason_code}`)
+    : chat.reason ?? "";
+  store.setChat({
+    available: chat.available,
+    reason: chat.available ? "" : localized,
+    messagesLeft: chat.messages_left ?? 0,
+  });
+  return chat;
+}
+
+/** Oturum, kütüphane VE araç kaydı tamamlanınca çözülüyor. */
 export const ready = (async () => {
   try {
     const session = await api.readSession();
@@ -223,17 +255,15 @@ export const ready = (async () => {
     const library = await api.libraryStats();
     store.patch({ library: library.stats });
 
-    // Sohbet anahtar yoksa kapalı. Ürünün geri kalanı bundan etkilenmiyor, o yüzden
-    // hata olsa bile başlatmayı düşürmüyoruz.
+    // Asistan anahtar yoksa kapalı. Ürünün geri kalanı bundan etkilenmiyor, o
+    // yüzden hata olsa bile başlatmayı düşürmüyoruz.
     try {
-      const chat = await api.chatStatus();
-      store.setChat({
-        available: chat.available,
-        reason: chat.reason ?? "",
-        messagesLeft: chat.messages_left ?? 0,
-      });
+      await refreshChatStatus();
     } catch (error) {
-      store.setChat({ available: false, reason: `Asistan durumu okunamadı: ${error.message}` });
+      store.setChat({
+        available: false,
+        reason: t("assistant.statusFailed", { error: error.message }),
+      });
     }
 
     const webmcp = await installTools({ actions, store });
@@ -241,18 +271,18 @@ export const ready = (async () => {
     store.setStatus(
       "ok",
       webmcp.available
-        ? `Hazır. ${library.stats.takes} take yüklü, ${webmcp.registered.length} WebMCP aracı kayıtlı.`
-        : `Hazır. ${library.stats.takes} take yüklü. Bu tarayıcıda WebMCP yok, paneli kullan.`
+        ? t("status.readyWithTools", {
+            takes: library.stats.takes,
+            tools: webmcp.registered.length,
+          })
+        : t("status.readyNoTools", { takes: library.stats.takes })
     );
     return { actions, store, player, webmcp };
   } catch (error) {
-    store.setStatus(
-      "error",
-      `Başlatılamadı: ${error.message}. ClickHouse ve sunucu ayakta mı?`
-    );
+    store.setStatus("error", t("status.startFailed", { error: error.message }));
     throw error;
   }
 })();
 
-// WebMCP kayıt katmanı (task 4) bunları kullanacak.
+// WebMCP kayıt katmanı ve konsoldan elle sürmek için.
 window.__cinema = { ready, actions, store, player };

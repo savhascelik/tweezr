@@ -423,6 +423,59 @@ console.log("\n=== WebMCP araçları ===");
   check("durum kapalı işaretlendi", store.getState().webmcp.available, false);
 }
 
+// --- i18n -------------------------------------------------------------------
+console.log("\n=== i18n ===");
+{
+  const i18n = await import("./src/i18n.js");
+  i18n.setLocale("en");
+
+  check("diller", i18n.LOCALES.sort(), ["en", "tr"]);
+
+  // Bir eksik anahtar ölümcül değil (İngilizceye düşüyor) ama Türkçe okuyan
+  // kişi araya karışmış İngilizce bir etiket görüyor. Kimse fark etmiyor, jüri
+  // fark ediyor.
+  for (const locale of i18n.LOCALES) {
+    check(`${locale}: eksik anahtar yok`, i18n.missingKeys(locale), []);
+    check(`${locale}: fazla anahtar yok`, i18n.strayKeys(locale), []);
+  }
+
+  check("İngilizce varsayılan okunuyor", i18n.t("timeline.stop"), "Stop");
+  check("interpolasyon", i18n.t("field.camera", { value: "B" }), "cam B");
+  check(
+    "birden çok parametre",
+    i18n.t("approve.cost", { cost: 1, before: 10, after: 9 }),
+    "1 credit will be spent. Balance 10 \u2192 9."
+  );
+  check("eksik parametre yer tutucuyu bırakıyor", i18n.t("field.camera"), "cam {value}");
+  check("süre birimi", i18n.seconds(1340), "1.34 s");
+  check("ton etiketi", i18n.toneLabel("whisper"), "whisper");
+  check("bilinmeyen ton olduğu gibi", i18n.toneLabel("sarcastic"), "sarcastic");
+
+  i18n.setLocale("tr");
+  check("dil değişti", i18n.getLocale(), "tr");
+  check("Türkçe metin", i18n.t("timeline.stop"), "Durdur");
+  check("Türkçe birim", i18n.seconds(1340), "1.34 sn");
+  check("Türkçe ton", i18n.toneLabel("whisper"), "fısıltı");
+
+  let notified = null;
+  const off = i18n.onLocaleChange((next) => (notified = next));
+  i18n.setLocale("en");
+  check("dil değişimi haber verildi", notified, "en");
+
+  // Aynı dile geçmek olay üretmemeli, yoksa her render döngü kurar
+  notified = null;
+  i18n.setLocale("en");
+  check("aynı dil olay üretmiyor", notified, null);
+
+  // Bilinmeyen dil sessizce yutulmalı, mevcut dili bozmamalı
+  i18n.setLocale("de");
+  check("bilinmeyen dil yoksayıldı", i18n.getLocale(), "en");
+  off();
+
+  // Bilinmeyen anahtar anahtarın kendisini döndürüyor: okunabilir kalıyor
+  check("bilinmeyen anahtar", i18n.t("nope.missing"), "nope.missing");
+}
+
 const passed = results.filter(Boolean).length;
 console.log(`\n${passed}/${results.length} test geçti`);
 process.exit(passed === results.length ? 0 : 1);
