@@ -9,9 +9,10 @@ confidence first. Given a tone filter that reads directly as "the best example o
 delivery first".
 """
 
-from __future__ import annotations
-
+import base64
+from pathlib import Path
 import re
+import tempfile
 
 from fastapi import (
     APIRouter,
@@ -415,6 +416,40 @@ async def upload_youtube(
         "credits_left": remaining,
         "session": session_payload(session),
     }
+
+
+class CookiesPayload(BaseModel):
+    cookies: str
+
+
+@router.post("/upload/cookies")
+async def upload_cookies(payload: CookiesPayload) -> dict:
+    """Stores Netscape cookies for YouTube ingestion to bypass bot detection on datacenter IPs."""
+    text = (payload.cookies or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty cookies provided.")
+    try:
+        decoded = base64.b64decode(text).decode("utf-8", errors="ignore")
+        if "# Netscape" in decoded or "\t" in decoded:
+            text = decoded
+    except Exception:
+        pass
+
+    target = Path(tempfile.gettempdir()) / "yt_runtime_cookies.txt"
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "bytes": len(text)}
+
+
+@router.post("/upload/cookies-file")
+async def upload_cookies_file(file: UploadFile = File(...)) -> dict:
+    """Accepts uploaded cookies.txt file directly."""
+    content = await file.read()
+    text = content.decode("utf-8", errors="ignore").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    target = Path(tempfile.gettempdir()) / "yt_runtime_cookies.txt"
+    target.write_text(text, encoding="utf-8")
+    return {"ok": True, "path": str(target), "bytes": len(text)}
 
 
 @router.get("/upload/{job_id}")
