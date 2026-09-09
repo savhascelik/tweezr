@@ -22,7 +22,7 @@ import os
 
 from . import agent_tools
 
-MODEL = os.environ.get("AGENT_MODEL", "gemini-2.5-flash")
+MODEL = os.environ.get("AGENT_MODEL", "gemini-3.5-flash")
 APP_NAME = "cinema"
 
 INSTRUCTION = """

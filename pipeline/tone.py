@@ -24,7 +24,7 @@ from pathlib import Path
 
 from . import schema
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.5-flash"
 
 PROMPT = """You are a script supervisor logging takes for an editor.
 

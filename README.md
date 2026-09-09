@@ -22,14 +22,14 @@ Both are imported and called in code, not named in prose. The call sites:
 
 **Google Cloud — Gemini through `google-genai`.** `pipeline/tone.py`:
 `from google import genai` (line 107), then
-`client.models.generate_content(model="gemini-2.5-flash", ...)` (line 121). One call per
+`client.models.generate_content(model="gemini-3.5-flash", ...)` (line 121). One call per
 take: the audio goes in, a delivery label per line comes out (calm, tense, whisper) with a
 confidence. It becomes a ClickHouse column, so "the calmer reading of this line" is a filter
 and a ranking rather than a guess.
 
 **Google Cloud — `google-adk`.** `server/agent.py`:
 `from google.adk.agents import Agent` (line 85),
-`Agent(model="gemini-2.5-flash", tools=agent_tools.TOOLS)` (line 90),
+`Agent(model="gemini-3.5-flash", tools=agent_tools.TOOLS)` (line 90),
 `InMemoryRunner(agent=agent, app_name=APP_NAME)` (line 99). This is the in-page assistant
 behind `POST /api/chat`, for a visitor who has no agent of their own. Its tool schema is
 built from the function signatures and docstrings in `server/agent_tools.py`.
