@@ -1,9 +1,9 @@
-"""Retrieval omurgası: hizalama, ton, ingest, arama.
+"""The retrieval backbone: alignment, tone, ingest, search.
 
-Paket, çünkü server/ de aynı kontratı ve sorguları kullanıyor. Şema ve SQL iki yerde
-kopyalanmasın.
+A package, because server/ uses the same contract and the same queries. Neither the
+schema nor the SQL should exist in two places.
 
-CLI'lar modül olarak çalışıyor, app/ kökünden:
+The CLIs run as modules, from the app/ root:
 
     python -m pipeline.transcribe ...
     python -m pipeline.ingest ...

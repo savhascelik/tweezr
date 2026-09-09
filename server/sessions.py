@@ -1,15 +1,17 @@
-"""Anonim oturum ve kredi defteri.
+"""Anonymous sessions and the credit ledger.
 
-Neden zorunlu giriş YOK: WebMCP araçları sayfa JavaScript'i tarafından kaydediliyor.
-Jüri URL'yi ChatGPT in-app browser'da açtığında login duvarı görürse uygulama JS'i hiç
-çalışmaz, registerTool çağrılmaz, ajan sıfır araç görür ve proje bozuk puanlanır.
-Üstüne OAuth redirect akışları ajan güdümlü tarayıcıda kırılgan.
+Why there is NO login: WebMCP tools are registered by page JavaScript. If a judge opens
+the URL in ChatGPT's in-app browser and meets a login wall, the application's JS never
+runs, registerTool is never called, the agent sees zero tools, and the project gets
+scored as broken. On top of that, OAuth redirect flows are fragile inside an
+agent-driven browser.
 
-Spec'in lehimize olan tarafı: ajan tarayıcıdan oturum bağlamını devralıyor. Yani
-session cookie'si ajanın çağrılarında da geçerli, ayrı bir token akışı kurmuyoruz.
+The part of the spec that works in our favour: the agent inherits the session context
+from the browser. The session cookie is therefore valid on the agent's calls too, and we
+build no separate token flow.
 
-Depo SQLite. Kredi düşürme tek atomik işlem olmak zorunda, yoksa iki eşzamanlı render
-isteği aynı krediyi iki kere harcar.
+Storage is SQLite. Deducting a credit has to be one atomic operation, or two concurrent
+render requests spend the same credit twice.
 """
 
 from __future__ import annotations
@@ -29,10 +31,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     ip          TEXT,
     created_at  TEXT NOT NULL,
     last_seen   TEXT NOT NULL,
-    -- Sohbet krediyle DEĞİL ayrı bir sayaçla ölçülüyor: farklı bir kaynak.
-    -- Kredi render ve ingest için; sohbet bir LLM çağrısı ve bedava bırakılırsa
-    -- açık bir LLM ucu olur. Sayı ile sınırlamak jürinin demoyu yarıda kesmesini
-    -- de engelliyor.
+    -- The assistant is metered by a separate counter, NOT by credits: it is a
+    -- different resource. Credits pay for render and ingest; an assistant turn is an
+    -- LLM call, and leaving it free would publish an open LLM endpoint. Limiting by
+    -- count also stops a judge running out of credits mid-demo.
     chat_used   INTEGER NOT NULL DEFAULT 0
 );
 
@@ -55,7 +57,7 @@ def now() -> str:
 
 @contextmanager
 def connection(write: bool = False):
-    """İstek başına bağlantı. WAL modu okuyucuyu yazıcıya bloke etmiyor."""
+    """One connection per request. WAL mode keeps readers from blocking on writers."""
     config.SESSION_DB.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(config.SESSION_DB, timeout=10, isolation_level=None)
     conn.row_factory = sqlite3.Row
@@ -63,8 +65,8 @@ def connection(write: bool = False):
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         if write:
-            # IMMEDIATE: yazma kilidini hemen al. Kredi düşürmede iki isteğin
-            # aynı bakiyeyi okuyup ayrı ayrı harcamasını engelleyen şey bu.
+            # IMMEDIATE takes the write lock straight away. This is what stops two
+            # requests reading the same balance and each spending it.
             conn.execute("BEGIN IMMEDIATE")
         yield conn
         if write:
@@ -80,9 +82,9 @@ def connection(write: bool = False):
 def init_db() -> None:
     with connection() as conn:
         conn.executescript(SCHEMA)
-        # CREATE TABLE IF NOT EXISTS mevcut tabloya kolon eklemiyor. Geliştirme
-        # sırasında oluşmuş bir veritabanı chat_used olmadan kalır ve her sohbet
-        # isteği düşer, o yüzden burada telafi ediyoruz.
+        # CREATE TABLE IF NOT EXISTS does not add columns to an existing table. A
+        # database created earlier in development would be left without chat_used and
+        # every assistant request would fail, so we make up for it here.
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(sessions)")}
         if "chat_used" not in columns:
             conn.execute(
@@ -105,9 +107,9 @@ def recent_sessions_from_ip(ip: str, hours: int = 1) -> int:
 
 
 def create(ip: str = "", role: str = "guest") -> dict:
-    """Yeni anonim oturum. Kullanıcı hiçbir şey yapmıyor, ilk yüklemede oluşuyor."""
+    """A new anonymous session, created on first load with the user doing nothing."""
     credits = config.ROLE_CREDITS.get(role, config.GUEST_CREDITS)
-    # token_urlsafe kriptografik olarak güvenli; oturum kimliği tahmin edilemez olmalı
+    # token_urlsafe is cryptographically secure; a session id must not be guessable
     session_id = secrets.token_urlsafe(32)
     stamp = now()
 
@@ -119,7 +121,7 @@ def create(ip: str = "", role: str = "guest") -> dict:
         )
         conn.execute(
             "INSERT INTO ledger (session_id, delta, reason, at) VALUES (?, ?, ?, ?)",
-            (session_id, credits, f"{role} açılış bakiyesi", stamp),
+            (session_id, credits, f"{role} opening balance", stamp),
         )
 
     return {
@@ -161,10 +163,10 @@ class InsufficientCredits(Exception):
 
 
 def charge(session_id: str, amount: int, reason: str) -> int:
-    """Krediyi atomik olarak düşürür, kalan bakiyeyi döner.
+    """Deducts credit atomically and returns the remaining balance.
 
-    amount 0 ise hiçbir şey yazmıyor — bedava işlemler deftere satır eklemesin,
-    yoksa her arama defteri şişirir.
+    With amount 0 it writes nothing: free operations should not add ledger rows, or
+    every search would inflate the history.
     """
     if amount <= 0:
         session = get(session_id)
@@ -201,10 +203,10 @@ class ChatLimitReached(Exception):
 
 
 def consume_chat(session_id: str, limit: int) -> int:
-    """Sohbet sayacını atomik olarak artırır, kalan hakkı döner.
+    """Increments the assistant counter atomically and returns what is left.
 
-    charge() ile aynı kilitleme sebebi: eşzamanlı iki mesaj aynı sayacı okuyup
-    ikisi de geçerse sınır anlamsızlaşır.
+    Locked for the same reason as charge(): two concurrent messages reading the same
+    counter and both passing would make the limit meaningless.
     """
     with connection(write=True) as conn:
         row = conn.execute(

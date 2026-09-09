@@ -1,11 +1,12 @@
 /**
- * Frontend testleri. Bağımlılık yok, düz node.
+ * Frontend tests. No dependencies, plain node.
  *
  *   node web/test_web.mjs
  *
- * Tarayıcı gerektiren şeyler (rAF döngüsü, çift tampon geçişi, medya arama) burada
- * DEĞİL — jsdom medya oynatmayı uygulamıyor, currentTime ilerlemiyor. Onlar elle
- * doğrulanıyor. Buradaki testler saf mantık ve statik disiplin.
+ * Anything that genuinely needs a browser (the rAF loop, the double-buffer
+ * handoff, media seeking) is NOT here -- jsdom does not implement media
+ * playback, currentTime never advances. Those get verified by hand. What is
+ * here is pure logic and static discipline.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -18,16 +19,16 @@ const results = [];
 function check(name, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
   results.push(ok);
-  console.log(`  ${ok ? "GEÇTİ" : "BAŞARISIZ"}      ${name}`);
+  console.log(`  ${ok ? "PASS" : "FAIL"}      ${name}`);
   if (!ok) {
-    console.log(`               beklenen: ${JSON.stringify(expected)}`);
-    console.log(`               gelen   : ${JSON.stringify(actual)}`);
+    console.log(`               expected: ${JSON.stringify(expected)}`);
+    console.log(`               actual  : ${JSON.stringify(actual)}`);
   }
 }
 
 function checkThat(name, condition, detail = "") {
   results.push(Boolean(condition));
-  console.log(`  ${condition ? "GEÇTİ" : "BAŞARISIZ"}      ${name}`);
+  console.log(`  ${condition ? "PASS" : "FAIL"}      ${name}`);
   if (!condition && detail) console.log(`               ${detail}`);
 }
 
@@ -38,21 +39,21 @@ function sourceFiles() {
     .map((name) => ({ name, body: readFileSync(join(dir, name), "utf8") }));
 }
 
-// --- Statik disiplin ---------------------------------------------------------
-// Geçen projede onay penceresini innerHTML ile kurmuştuk ve zehirli bir araç adı
-// kendi Approve düğmesine basabiliyordu. Bu test o sınıf hatanın geri gelmesini
-// engelliyor: metinlerin kaynağı Whisper çıktısı ve dosya adları, yani
-// kontrol etmediğimiz veri.
-console.log("=== HTML enjeksiyon disiplini ===");
+// --- Static discipline -------------------------------------------------------
+// On the last project the approval dialog was built with innerHTML and a poisoned
+// tool name could press its own Approve button. This test stops that class of bug
+// from coming back: the text here originates from Whisper output and file names,
+// i.e. data we do not control.
+console.log("=== HTML injection discipline ===");
 {
-  // Yorumları atıyoruz: bu dosyalar neden innerHTML kullanmadıklarını ANLATIYOR,
-  // yani kelime yorumlarda geçiyor. Aranan şey gerçek kullanım.
+  // Strip comments first: these files EXPLAIN why they avoid innerHTML, so the
+  // word itself shows up in prose. What we are looking for is real usage.
   const stripComments = (body) =>
     body
-      .replace(/\/\*[\s\S]*?\*\//g, "")   // blok yorumlar
-      .replace(/(^|[^:"'`\w])\/\/.*$/gm, "$1"); // satır yorumları, http:// değil
+      .replace(/\/\*[\s\S]*?\*\//g, "")   // block comments
+      .replace(/(^|[^:"'`\w])\/\/.*$/gm, "$1"); // line comments, but not http://
 
-  // Nokta ile eşleştiriyoruz: tehlikeli kullanım her zaman `bir_şey.innerHTML`.
+  // Matched with the dot: dangerous usage is always `something.innerHTML`.
   const banned = [
     /\.(innerHTML|outerHTML|insertAdjacentHTML)\b/,
     /document\s*\.\s*write\s*\(/,
@@ -61,38 +62,38 @@ console.log("=== HTML enjeksiyon disiplini ===");
   for (const { name, body } of sourceFiles()) {
     const code = stripComments(body);
     const found = banned.filter((pattern) => pattern.test(code)).map(String);
-    checkThat(`${name} HTML enjeksiyonu yapmıyor`, found.length === 0, `bulundu: ${found}`);
+    checkThat(`${name} does no HTML injection`, found.length === 0, `found: ${found}`);
   }
 
-  // Testin gerçekten bir şey ölçtüğünü doğrula: kasten bozuk girdi yakalanmalı
+  // Prove the test actually measures something: deliberately bad input must trip it
   checkThat(
-    "test gerçek kullanımı yakalıyor",
+    "the check catches real usage",
     banned.some((pattern) => pattern.test('node.innerHTML = data')),
-    "kontrol kendi kendini doğrulamıyor"
+    "the check does not validate itself"
   );
   checkThat(
-    "test yorumları yakalamıyor",
-    !banned.some((pattern) => pattern.test(stripComments("// innerHTML asla"))),
-    "yorumlar yanlış pozitif üretiyor"
+    "the check ignores comments",
+    !banned.some((pattern) => pattern.test(stripComments("// never innerHTML"))),
+    "comments produce false positives"
   );
 
   const ui = sourceFiles().find((file) => file.name === "ui.js").body;
   checkThat(
-    "el() yardımcısı textContent kullanıyor",
+    "the el() helper uses textContent",
     ui.includes("node.textContent = value"),
-    "el() metni textContent ile yazmalı"
+    "el() must write text through textContent"
   );
   checkThat(
-    "dış bağlantılar noopener taşıyor",
+    "external links carry noopener",
     ui.includes('rel: "noopener noreferrer"'),
-    "target=_blank bağlantıları noopener olmadan açılmamalı"
+    "target=_blank links must not open without noopener"
   );
 }
 
-// --- store.js saf mantığı ----------------------------------------------------
+// --- store.js pure logic -----------------------------------------------------
 console.log("\n=== store ===");
 {
-  // structuredClone node 24'te global
+  // structuredClone is global as of node 24
   const store = await import("./src/store.js");
 
   const candidate = (id, start, end, extra = {}) => ({
@@ -107,57 +108,57 @@ console.log("\n=== store ===");
     ...extra,
   });
 
-  check("başlangıçta timeline boş", store.getState().timeline, []);
+  check("timeline starts empty", store.getState().timeline, []);
 
   store.appendToTimeline(candidate("S01_T01:1:0", 0, 820));
   store.appendToTimeline(candidate("S01_T03:1:0", 0, 1340));
-  check("iki parça eklendi", store.getState().timeline.length, 2);
-  check("toplam süre", store.timelineDurationMs(), 820 + 1340);
+  check("two segments appended", store.getState().timeline.length, 2);
+  check("total duration", store.timelineDurationMs(), 820 + 1340);
 
   const first = store.getState().timeline[0];
-  check("süre türetildi", first.duration_ms, 820);
-  check("ton varsayılanı", first.tone, "neutral");
+  check("duration derived", first.duration_ms, 820);
+  check("tone default", first.tone, "neutral");
 
   store.removeFromTimeline(0);
-  check("parça çıkarıldı", store.getState().timeline.length, 1);
-  check("doğru parça kaldı", store.getState().timeline[0].take_id, "S01_T03");
+  check("segment removed", store.getState().timeline.length, 1);
+  check("the right segment survived", store.getState().timeline[0].take_id, "S01_T03");
 
-  // propose_cut aracının yaptığı şey: tüm timeline'ı değiştirmek
+  // What the propose_cut tool does: replace the whole timeline
   store.setTimeline([candidate("S01_T05:1:0", 100, 1300)]);
-  check("öneri timeline'ı değiştirdi", store.getState().timeline.length, 1);
-  check("öneri doğru parça", store.getState().timeline[0].take_id, "S01_T05");
+  check("proposal replaced the timeline", store.getState().timeline.length, 1);
+  check("proposal kept the right segment", store.getState().timeline[0].take_id, "S01_T05");
 
-  // getState kopya döndürmeli, yoksa dışarıdan mutasyon store'u sessizce bozar
+  // getState must hand back a copy, otherwise outside mutation silently corrupts the store
   const snapshot = store.getState();
   snapshot.timeline.push(candidate("HACK:1:0", 0, 1));
-  check("getState kopya döndürüyor", store.getState().timeline.length, 1);
+  check("getState returns a copy", store.getState().timeline.length, 1);
 
   let notified = 0;
   const unsubscribe = store.subscribe(() => (notified += 1));
   store.setStatus("ok", "test");
-  check("abone haber aldı", notified, 1);
+  check("subscriber was notified", notified, 1);
   unsubscribe();
   store.setStatus("idle", "");
-  check("abonelik iptal edildi", notified, 1);
+  check("unsubscribe took effect", notified, 1);
 
-  // Bir abonenin hatası diğerlerini düşürmemeli
+  // One subscriber throwing must not take the others down
   let second = 0;
   const offBad = store.subscribe(() => {
-    throw new Error("bozuk abone");
+    throw new Error("broken subscriber");
   });
   const offGood = store.subscribe(() => (second += 1));
-  store.setStatus("ok", "hata sonrası");
-  check("bozuk abone diğerini engellemiyor", second, 1);
+  store.setStatus("ok", "after the throw");
+  check("a broken subscriber does not block the next one", second, 1);
   offBad();
   offGood();
 
   store.clearTimeline();
-  check("temizlendi", store.getState().timeline, []);
+  check("cleared", store.getState().timeline, []);
 
-  // --- Asistan sonucunun uygulanması ---
-  // Sayfa içi sohbet ile WebMCP araçları aynı timeline'a yazıyor. Kural store'da
-  // tek yerde durduğu için iki giriş kapısı ayrışamıyor.
-  console.log("\n=== asistan sonucu ===");
+  // --- Applying an assistant result ---
+  // The in-page chat and the WebMCP tools write to the same timeline. Because the
+  // rule lives in one place in the store, the two entry points cannot drift apart.
+  console.log("\n=== assistant result ===");
   const agentCandidates = [
     candidate("S01_T03:1:0", 0, 1340),
     candidate("S01_T01:1:0", 0, 820),
@@ -167,46 +168,47 @@ console.log("\n=== store ===");
     candidates: agentCandidates,
     proposal: ["S01_T01:1:0", "S01_T03:1:0"],
   });
-  check("adaylar yazıldı", applied.candidates, 2);
-  check("öneri uygulandı", applied.segments, 2);
-  check("düşen kimlik yok", applied.dropped, []);
-  check("ajanın verdiği sıra korundu", store.getState().timeline[0].take_id, "S01_T01");
+  check("candidates stored", applied.candidates, 2);
+  check("proposal applied", applied.segments, 2);
+  check("no ids dropped", applied.dropped, []);
+  check("the order the agent gave was kept", store.getState().timeline[0].take_id, "S01_T01");
 
-  // Çözülemeyen kimlik sessizce yutulmamalı
+  // An unresolvable id must not be swallowed
   const partial = store.applyAgentResult({
     candidates: agentCandidates,
-    proposal: ["S01_T03:1:0", "hayalet:9:9"],
+    proposal: ["S01_T03:1:0", "ghost:9:9"],
   });
-  check("çözülemeyen kimlik bildirildi", partial.dropped, ["hayalet:9:9"]);
-  check("çözülenler yine uygulandı", store.getState().timeline.length, 1);
+  check("unresolvable id reported", partial.dropped, ["ghost:9:9"]);
+  check("the resolvable ones were still applied", store.getState().timeline.length, 1);
 
-  // Öneri yoksa timeline'a dokunulmamalı
+  // With no proposal the timeline must be left alone
   store.setTimeline(agentCandidates);
   store.applyAgentResult({ candidates: agentCandidates, proposal: [] });
-  check("önerisiz cevap timeline'ı bozmadı", store.getState().timeline.length, 2);
+  check("a reply without a proposal left the timeline intact", store.getState().timeline.length, 2);
 
   store.clearTimeline();
   store.patch({ candidates: [] });
 
-  console.log("\n=== sohbet durumu ===");
-  store.setChat({ available: false, reason: "anahtar yok" });
-  check("sohbet kapalı", store.getState().chat.available, false);
-  store.appendChatMessage({ role: "user", text: "merhaba" });
-  store.appendChatMessage({ role: "agent", text: "buldum", toolCalls: [{ name: "find_line" }] });
-  check("iki mesaj birikti", store.getState().chat.messages.length, 2);
+  console.log("\n=== chat state ===");
+  store.setChat({ available: false, reason: "no api key" });
+  check("chat disabled", store.getState().chat.available, false);
+  store.appendChatMessage({ role: "user", text: "hello" });
+  store.appendChatMessage({ role: "agent", text: "found it", toolCalls: [{ name: "find_line" }] });
+  check("two messages accumulated", store.getState().chat.messages.length, 2);
   check(
-    "araç izi korundu",
+    "tool trace preserved",
     store.getState().chat.messages[1].toolCalls[0].name,
     "find_line"
   );
   store.setChat({ messages: [] });
 }
 
-// --- WebMCP araçları -------------------------------------------------------
-// Sahte bir modelContext ile test ediyoruz. Geçen projede doğrulanan yüzey:
-// registerTool(tool, {signal}), aynı isme ikinci kayıt reddedilir, signal abort
-// edilince kayıt düşer. `updateTool` diye bir API yok.
-console.log("\n=== WebMCP araçları ===");
+// --- WebMCP tools ----------------------------------------------------------
+// Tested against a fake modelContext. The surface verified on the last project:
+// registerTool(tool, {signal}), a second registration under the same name is
+// rejected, aborting the signal drops the registration. There is no `updateTool`
+// API.
+console.log("\n=== WebMCP tools ===");
 {
   const { installTools } = await import("./src/webmcp.js");
   const store = await import("./src/store.js");
@@ -289,22 +291,22 @@ console.log("\n=== WebMCP araçları ===");
   const context = fakeModelContext();
   const install = await installTools({ actions, store, modelContext: context });
 
-  check("beş araç kaydedildi", install.registered.length, 5);
+  check("five tools registered", install.registered.length, 5);
   check(
-    "araç isimleri",
+    "tool names",
     [...context.tools.keys()].sort(),
     ["commit_render", "find_line", "get_timeline_state", "preview_segment", "propose_cut"]
   );
-  check("hiç kayıt reddedilmedi", context.rejected, []);
-  check("store durumu güncellendi", store.getState().webmcp, { available: true, registered: 5 });
+  check("no registration rejected", context.rejected, []);
+  check("store state updated", store.getState().webmcp, { available: true, registered: 5 });
 
   const namePattern = /^[A-Za-z0-9_.-]{1,128}$/;
   checkThat(
-    "isimler spec desenine uyuyor",
+    "names match the spec pattern",
     [...context.tools.keys()].every((name) => namePattern.test(name))
   );
   checkThat(
-    "her araç açıklama ve şema taşıyor",
+    "every tool carries a description and a schema",
     [...context.tools.values()].every(
       (tool) =>
         typeof tool.description === "string" &&
@@ -314,30 +316,30 @@ console.log("\n=== WebMCP araçları ===");
     )
   );
   check(
-    "salt okunur araçlar işaretli",
+    "read-only tools are flagged",
     ["find_line", "get_timeline_state"].map(
       (name) => context.tools.get(name).annotations.readOnlyHint
     ),
     [true, true]
   );
   check(
-    "yazan araçlar salt okunur değil",
+    "writing tools are not flagged read-only",
     ["propose_cut", "commit_render"].map(
       (name) => context.tools.get(name).annotations.readOnlyHint
     ),
     [false, false]
   );
 
-  // --- execute yolları ---
+  // --- execute paths ---
   const found = await context.tools.get("find_line").execute({ phrase: "I never asked for this" });
-  check("find_line arama yaptı", searchCalls.at(-1), {
+  check("find_line ran the search", searchCalls.at(-1), {
     phrase: "I never asked for this",
     tone: "",
   });
-  check("find_line iki aday döndü", found.candidates.length, 2);
-  checkThat("find_line özet cümlesi var", found.summary.includes("2 take(s)"), found.summary);
+  check("find_line returned two candidates", found.candidates.length, 2);
+  checkThat("find_line has a summary sentence", found.summary.includes("2 take(s)"), found.summary);
   checkThat(
-    "aday provenance taşıyor",
+    "candidate carries provenance",
     found.candidates[0].source === "S01_T03.wav",
     JSON.stringify(found.candidates[0])
   );
@@ -345,31 +347,31 @@ console.log("\n=== WebMCP araçları ===");
   const toneFiltered = await context.tools
     .get("find_line")
     .execute({ phrase: "I never asked for this", tone: "calm" });
-  check("ton filtresi tek aday", toneFiltered.candidates.length, 1);
+  check("tone filter narrowed to one candidate", toneFiltered.candidates.length, 1);
 
-  // Aday havuzunu geri yükle
+  // Restore the candidate pool
   await context.tools.get("find_line").execute({ phrase: "I never asked for this" });
 
   const proposed = await context.tools
     .get("propose_cut")
     .execute({ candidate_ids: ["S01_T03:1:0", "S01_T01:1:0"] });
-  check("propose_cut iki parça koydu", proposed.segments.length, 2);
-  check("propose_cut render etmedi", proposed.rendered, false);
-  check("timeline store'a yazıldı", store.getState().timeline.length, 2);
-  check("sıra korundu", store.getState().timeline[0].take_id, "S01_T03");
-  check("toplam süre", proposed.total_duration_ms, 1340 + 820);
+  check("propose_cut placed two segments", proposed.segments.length, 2);
+  check("propose_cut did not render", proposed.rendered, false);
+  check("timeline written to the store", store.getState().timeline.length, 2);
+  check("order preserved", store.getState().timeline[0].take_id, "S01_T03");
+  check("total duration", proposed.total_duration_ms, 1340 + 820);
 
-  // Bilinmeyen id sessizce yutulmamalı, ajana ne yapacağını söylemeli
+  // An unknown id must not be swallowed; the agent needs to be told what to do
   let proposeError = null;
   try {
-    await context.tools.get("propose_cut").execute({ candidate_ids: ["yok:1:0"] });
+    await context.tools.get("propose_cut").execute({ candidate_ids: ["missing:1:0"] });
   } catch (error) {
     proposeError = error.message;
   }
-  checkThat("bilinmeyen id reddedildi", proposeError !== null);
+  checkThat("unknown id rejected", proposeError !== null);
   checkThat(
-    "hata mesajı yol gösteriyor",
-    proposeError?.includes("find_line") && proposeError?.includes("yok:1:0"),
+    "the error message points somewhere",
+    proposeError?.includes("find_line") && proposeError?.includes("missing:1:0"),
     proposeError
   );
 
@@ -379,24 +381,24 @@ console.log("\n=== WebMCP araçları ===");
   } catch (error) {
     emptyError = error.message;
   }
-  checkThat("boş liste reddedildi", emptyError?.includes("at least one"), emptyError);
+  checkThat("empty list rejected", emptyError?.includes("at least one"), emptyError);
 
-  // get_timeline_state insanın değişikliğini görmeli — HITL döngüsünün kanıtı
+  // get_timeline_state must see the human's edit -- the proof the HITL loop closes
   store.removeFromTimeline(0);
   const readBack = await context.tools.get("get_timeline_state").execute();
-  check("insanın çıkardığı parça yansıdı", readBack.segments.length, 1);
-  check("kalan doğru parça", readBack.segments[0].take, "S01_T01");
-  check("hâlâ render edilmedi", readBack.rendered, false);
+  check("the segment the human removed is reflected", readBack.segments.length, 1);
+  check("the right segment remains", readBack.segments[0].take, "S01_T01");
+  check("still not rendered", readBack.rendered, false);
 
   const previewed = await context.tools
     .get("preview_segment")
     .execute({ candidate_id: "S01_T03:1:0" });
-  checkThat("önizleme render etmiyor", previewed.summary.includes("Nothing was rendered"), previewed.summary);
+  checkThat("preview does not render", previewed.summary.includes("Nothing was rendered"), previewed.summary);
 
-  // --- Duruma göre açıklama güncellemesi ---
-  // Kredi bitince ajan çağırmadan önce öğrenmeli.
+  // --- Description updates that follow state ---
+  // When credits run out the agent should learn that before calling.
   const before = context.tools.get("commit_render").description;
-  checkThat("kredi varken kullanılabilir", before.includes("10 left"), before);
+  checkThat("available while credits remain", before.includes("10 left"), before);
 
   store.patch({
     session: { ...store.getState().session, credits: 0 },
@@ -404,23 +406,23 @@ console.log("\n=== WebMCP araçları ===");
   await install.sync();
 
   const after = context.tools.get("commit_render").description;
-  checkThat("kredi bitince UNAVAILABLE yazıyor", after.includes("UNAVAILABLE"), after);
+  checkThat("says UNAVAILABLE once credits run out", after.includes("UNAVAILABLE"), after);
   checkThat(
-    "arama hâlâ çalışıyor deniyor",
+    "still says search keeps working",
     after.includes("cost nothing"),
     after
   );
-  check("yeniden kayıtta çoğalma yok", context.tools.size, 5);
-  check("çift kayıt denemesi olmadı", context.rejected, []);
+  check("re-registration does not duplicate", context.tools.size, 5);
+  check("no duplicate registration attempted", context.rejected, []);
   checkThat(
-    "bedava araçlar etkilenmedi",
+    "free tools untouched",
     !context.tools.get("find_line").description.includes("UNAVAILABLE")
   );
 
-  // --- WebMCP olmayan tarayıcı ---
+  // --- Browser without WebMCP ---
   const withoutContext = await installTools({ actions, store, modelContext: null });
-  check("WebMCP yoksa patlamıyor", withoutContext.available, false);
-  check("durum kapalı işaretlendi", store.getState().webmcp.available, false);
+  check("does not blow up without WebMCP", withoutContext.available, false);
+  check("state flagged unavailable", store.getState().webmcp.available, false);
 }
 
 // --- i18n -------------------------------------------------------------------
@@ -429,53 +431,53 @@ console.log("\n=== i18n ===");
   const i18n = await import("./src/i18n.js");
   i18n.setLocale("en");
 
-  check("diller", i18n.LOCALES.sort(), ["en", "tr"]);
+  check("locales", i18n.LOCALES.sort(), ["en", "tr"]);
 
-  // Bir eksik anahtar ölümcül değil (İngilizceye düşüyor) ama Türkçe okuyan
-  // kişi araya karışmış İngilizce bir etiket görüyor. Kimse fark etmiyor, jüri
-  // fark ediyor.
+  // A missing key is not fatal (it falls back to English) but someone reading
+  // Turkish then sees one English label in the middle of the page. Nobody
+  // notices that; a judge does.
   for (const locale of i18n.LOCALES) {
-    check(`${locale}: eksik anahtar yok`, i18n.missingKeys(locale), []);
-    check(`${locale}: fazla anahtar yok`, i18n.strayKeys(locale), []);
+    check(`${locale}: no missing keys`, i18n.missingKeys(locale), []);
+    check(`${locale}: no stray keys`, i18n.strayKeys(locale), []);
   }
 
-  check("İngilizce varsayılan okunuyor", i18n.t("timeline.stop"), "Stop");
-  check("interpolasyon", i18n.t("field.camera", { value: "B" }), "cam B");
+  check("English default reads back", i18n.t("timeline.stop"), "Stop");
+  check("interpolation", i18n.t("field.camera", { value: "B" }), "cam B");
   check(
-    "birden çok parametre",
+    "multiple parameters",
     i18n.t("approve.cost", { cost: 1, before: 10, after: 9 }),
     "1 credit will be spent. Balance 10 \u2192 9."
   );
-  check("eksik parametre yer tutucuyu bırakıyor", i18n.t("field.camera"), "cam {value}");
-  check("süre birimi", i18n.seconds(1340), "1.34 s");
-  check("ton etiketi", i18n.toneLabel("whisper"), "whisper");
-  check("bilinmeyen ton olduğu gibi", i18n.toneLabel("sarcastic"), "sarcastic");
+  check("a missing parameter leaves the placeholder", i18n.t("field.camera"), "cam {value}");
+  check("duration unit", i18n.seconds(1340), "1.34 s");
+  check("tone label", i18n.toneLabel("whisper"), "whisper");
+  check("unknown tone passes through", i18n.toneLabel("sarcastic"), "sarcastic");
 
   i18n.setLocale("tr");
-  check("dil değişti", i18n.getLocale(), "tr");
-  check("Türkçe metin", i18n.t("timeline.stop"), "Durdur");
-  check("Türkçe birim", i18n.seconds(1340), "1.34 sn");
-  check("Türkçe ton", i18n.toneLabel("whisper"), "fısıltı");
+  check("locale changed", i18n.getLocale(), "tr");
+  check("Turkish text", i18n.t("timeline.stop"), "Durdur");
+  check("Turkish unit", i18n.seconds(1340), "1.34 sn");
+  check("Turkish tone", i18n.toneLabel("whisper"), "fısıltı");
 
   let notified = null;
   const off = i18n.onLocaleChange((next) => (notified = next));
   i18n.setLocale("en");
-  check("dil değişimi haber verildi", notified, "en");
+  check("locale change notified", notified, "en");
 
-  // Aynı dile geçmek olay üretmemeli, yoksa her render döngü kurar
+  // Switching to the same locale must not fire, otherwise every render loops
   notified = null;
   i18n.setLocale("en");
-  check("aynı dil olay üretmiyor", notified, null);
+  check("same locale fires nothing", notified, null);
 
-  // Bilinmeyen dil sessizce yutulmalı, mevcut dili bozmamalı
+  // An unknown locale must be swallowed without disturbing the current one
   i18n.setLocale("de");
-  check("bilinmeyen dil yoksayıldı", i18n.getLocale(), "en");
+  check("unknown locale ignored", i18n.getLocale(), "en");
   off();
 
-  // Bilinmeyen anahtar anahtarın kendisini döndürüyor: okunabilir kalıyor
-  check("bilinmeyen anahtar", i18n.t("nope.missing"), "nope.missing");
+  // An unknown key returns the key itself: it stays readable
+  check("unknown key", i18n.t("nope.missing"), "nope.missing");
 }
 
 const passed = results.filter(Boolean).length;
-console.log(`\n${passed}/${results.length} test geçti`);
+console.log(`\n${passed}/${results.length} tests passed`);
 process.exit(passed === results.length ? 0 : 1);

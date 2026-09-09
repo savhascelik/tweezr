@@ -1,19 +1,19 @@
-"""ADK ajanı — sayfanın kendi asistanı.
+"""The ADK agent — the page's own assistant.
 
-Neden WebMCP araçlarının ALTINDA değil ÜSTÜNDE:
+Why it sits ON TOP of the WebMCP tools rather than underneath them:
 
-Harici ajan (ChatGPT in-app browser) zaten bir LLM. `find_line`'ı yapılandırılmış
-parametrelerle çağırıyor. Onu bir de bizim ajanımızdan geçirmek, ilk modelin çoktan
-yaptığı parametre eşleştirmesini ikinci bir modele yaptırmak olurdu — gecikme ve hata
-yüzeyinden başka bir şey eklemez. O yüzden WebMCP araçları doğrudan API'ye gidiyor.
+The external agent, ChatGPT's in-app browser, is already an LLM. It calls find_line with
+structured parameters. Routing that through our agent as well would mean asking a second
+model to redo a mapping the first one already did, which adds latency and failure
+surface and nothing else. So the WebMCP tools go straight to the API.
 
-Bu ajanın işi başka: **ajanı olmayan kullanıcı.** Çoğu insan ChatGPT in-app browser'da
-gezmiyor. Sayfa kendi asistanını taşıyınca ürün harici bir ajan olmadan da doğal dille
-kullanılabiliyor, ve ikisi AYNI araçların üstünde çalışıyor.
+This agent is for something else: **the visitor with no agent.** Most people are not
+browsing inside ChatGPT's in-app browser. Carrying our own assistant means the product
+is usable in natural language on its own, and both sit on the SAME tools.
 
-Anahtar yoksa sohbet devre dışı ama ürün çalışmaya devam ediyor: arama paneli, timeline,
-önizleme ve provenance hepsi LLM'siz. Bu bilinçli — jüri anahtarsız bir ortamda bile
-ürünün ne yaptığını görebilmeli.
+With no key the assistant is off but the product keeps working: search panel, timeline,
+preview and provenance are all LLM-free. That is deliberate — a judge should see what
+the product does even in an environment with no key.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ from a tool.
 
 
 class AgentUnavailable(RuntimeError):
-    """Anahtar yok ya da ADK kurulu değil. Ürünün geri kalanı etkilenmiyor."""
+    """No key, or ADK is not installed. The rest of the product is unaffected."""
 
 
 def api_key() -> str | None:
@@ -70,37 +70,37 @@ _runner = None
 
 
 def runner():
-    """ADK runner'ı. İlk kullanımda kuruluyor."""
+    """The ADK runner, built on first use."""
     global _runner
     if _runner is not None:
         return _runner
 
     if not available():
         raise AgentUnavailable(
-            "GEMINI_API_KEY tanımlı değil, sohbet devre dışı. Arama paneli, timeline, "
-            "önizleme ve provenance LLM olmadan çalışıyor."
+            "GEMINI_API_KEY is not set, so the assistant is off. Search, timeline, "
+            "preview and provenance all work without an LLM."
         )
 
     try:
         from google.adk.agents import Agent
         from google.adk.runners import InMemoryRunner
     except ImportError as error:
-        raise AgentUnavailable(f"google-adk kurulu değil: {error}") from error
+        raise AgentUnavailable(f"google-adk is not installed: {error}") from error
 
     agent = Agent(
         name="rough_cut_assistant",
         model=MODEL,
         description="Finds spoken lines in an editing library and proposes rough cuts.",
         instruction=INSTRUCTION,
-        # Düz Python fonksiyonları: ADK şemayı imza ve docstring'den üretiyor,
-        # yani agent_tools.py'deki docstring'ler modelin gördüğü arayüz.
+        # Plain Python functions: ADK builds the schema from the signature and the
+        # docstring, so those docstrings in agent_tools.py are the model's interface.
         tools=agent_tools.TOOLS,
     )
     _runner = InMemoryRunner(agent=agent, app_name=APP_NAME)
     return _runner
 
 
-# Tarayıcı oturumu -> ADK oturumu. Sohbet geçmişi ADK'nın session service'inde.
+# Browser session -> ADK session. The conversation history lives in ADK's session service.
 _adk_sessions: dict[str, str] = {}
 
 
@@ -116,13 +116,13 @@ async def adk_session_id(user_id: str) -> str:
 
 
 async def ask(user_id: str, message: str) -> dict:
-    """Ajana bir mesaj sorar. Cevabı ve araçların topladığı yan etkileri döner."""
+    """Asks the agent a message. Returns the reply plus what the tools collected."""
     from google.genai import types
 
     active = runner()
     session_id = await adk_session_id(user_id)
 
-    # İstek başına toplayıcı: araçlar adayları ve öneriyi buraya yazıyor
+    # Per-request collector: the tools write candidates and the proposal into this
     collected = agent_tools.new_collection()
 
     reply_parts: list[str] = []
@@ -135,7 +135,7 @@ async def ask(user_id: str, message: str) -> dict:
             raise RuntimeError(event.error_message)
         if not event.content or not event.content.parts:
             continue
-        # Sadece nihai metni topluyoruz; ara akış parçaları tekrar üretiyor
+        # Only the final text is collected; intermediate streamed parts repeat it
         if event.is_final_response():
             for part in event.content.parts:
                 if getattr(part, "text", None):

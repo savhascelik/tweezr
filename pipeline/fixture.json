@@ -1,5 +1,5 @@
 {
-  "_comment": "Elle yazılmış veri kontratı. Whisper pipeline'ı BU şekli üretmek zorunda. UI ve ClickHouse tarafı bunu bekliyor. word_norm burada yok, schema.normalize_word() türetiyor.",
+  "_comment": "The data contract, written by hand. The Whisper pipeline has to produce THIS shape; the UI and the ClickHouse side both expect it. word_norm is absent here on purpose: schema.normalize_word() derives it.",
   "project_id": "demo",
   "takes": [
     {

@@ -1,6 +1,6 @@
-"""ClickHouse bağlantısı. Ortam değişkenlerinden okuyor, kodda kimlik bilgisi yok.
+"""ClickHouse connection. Read from the environment; no credentials in the code.
 
-Yerel geliştirme (Docker):
+Local development (Docker):
     docker run -d --name ch-dev -p 18123:8123 \
         -e CLICKHOUSE_PASSWORD=dev -e CLICKHOUSE_DB=cinema \
         clickhouse/clickhouse-server:25.3
@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 def config() -> dict:
-    """Bağlantı ayarları. Varsayılanlar yerel Docker konteynerine bakıyor."""
+    """Connection settings. The defaults point at the local Docker container."""
     secure = os.environ.get("CLICKHOUSE_SECURE", "").lower() in ("1", "true", "yes")
     return {
         "host": os.environ.get("CLICKHOUSE_HOST", "localhost"),
@@ -34,9 +34,10 @@ def config() -> dict:
 
 
 def connect():
-    """clickhouse-connect istemcisi döner.
+    """Returns a clickhouse-connect client.
 
-    Track şartı: ClickHouse gerçekten import edilip çağrılıyor, README'de adı geçmiyor.
+    The track requires ClickHouse to be genuinely imported and called, not merely
+    mentioned in a README.
     """
     import clickhouse_connect
 
@@ -52,7 +53,7 @@ def connect():
 
 
 def describe() -> str:
-    """Şifre olmadan bağlantı tarifi. Log'a basmak için güvenli."""
+    """The connection described without the password. Safe to print to a log."""
     settings = config()
     scheme = "https" if settings["secure"] else "http"
     return (
@@ -62,10 +63,10 @@ def describe() -> str:
 
 
 def create_table(client) -> None:
-    """schema.sql'i uygular. DDL tek yerde duruyor, Python'da kopyası yok."""
+    """Applies schema.sql. The DDL lives in one place, with no copy in Python."""
     sql = (Path(__file__).parent / "schema.sql").read_text(encoding="utf-8")
     for statement in sql.split(";"):
-        # Yorum satırlarını at, kalan gerçek DDL ise çalıştır
+        # Drop comment lines; run whatever real DDL is left
         body = "\n".join(
             line for line in statement.splitlines() if not line.strip().startswith("--")
         ).strip()

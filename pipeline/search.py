@@ -1,13 +1,13 @@
-"""ClickHouse üzerinden replik arama. ADK ajanının find_line aracının arkası.
+"""Line search through ClickHouse. What sits behind the agent's find_line tool.
 
     python -m pipeline.search --phrase "I never asked for this"
     python -m pipeline.search --phrase "I never asked for this" --tone calm
     python -m pipeline.search --word asked
-    python -m pipeline.search --phrase "..." --compare scratch\out.json
+    python -m pipeline.search --phrase "..." --compare scratch\\out.json
 
---compare en önemlisi: SQL'in yerel referans uygulamasıyla (verify_cut.find_phrase)
-AYNI cevabı verdiğini doğruluyor. İki uygulama ayrışırsa sessizce yanlış sonuç
-döndürmeye başlarız; bu mod onu yakalıyor.
+--compare is the important one: it asserts the SQL returns the SAME answer as the local
+reference implementation (verify_cut.find_phrase). If those two diverge we start
+returning the wrong takes silently, and this mode is what catches it.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def word_search(
 
 
 def compare_with_reference(doc_path: Path, phrase: str, sql_matches: list[dict]) -> bool:
-    """SQL sonucunu yerel referans uygulamayla karşılaştırır."""
+    """Compares the SQL result against the local reference implementation."""
     from . import verify_cut
 
     doc = json.loads(doc_path.read_text(encoding="utf-8"))
@@ -59,72 +59,75 @@ def compare_with_reference(doc_path: Path, phrase: str, sql_matches: list[dict])
     sql_keys = sorted(as_key(m) for m in sql_matches)
     ref_keys = sorted(as_key(m) for m in reference)
 
-    print(f"\n=== karşılaştırma ===")
-    print(f"  SQL       : {len(sql_keys)} eşleşme")
-    print(f"  referans  : {len(ref_keys)} eşleşme")
+    print(f"\n=== comparison ===")
+    print(f"  SQL        : {len(sql_keys)} matches")
+    print(f"  reference  : {len(ref_keys)} matches")
 
     if sql_keys == ref_keys:
-        print("  SONUÇ     : birebir aynı")
+        print("  RESULT     : identical")
         return True
 
-    print("  SONUÇ     : AYRIŞMA VAR")
+    print("  RESULT     : THEY DISAGREE")
     for key in sorted(set(sql_keys) - set(ref_keys)):
-        print(f"    sadece SQL'de      : {key}")
+        print(f"    only in SQL        : {key}")
     for key in sorted(set(ref_keys) - set(sql_keys)):
-        print(f"    sadece referansta  : {key}")
+        print(f"    only in reference  : {key}")
     return False
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="ClickHouse replik arama.")
+    parser = argparse.ArgumentParser(description="ClickHouse line search.")
     parser.add_argument("--project", default="demo")
     parser.add_argument("--phrase")
     parser.add_argument("--word")
     parser.add_argument("--tone", default="", help="calm, tense, whisper ...")
     parser.add_argument("--limit", type=int, default=50)
     parser.add_argument(
-        "--compare", type=Path, metavar="DOC", help="SQL sonucunu bu dokümanla karşılaştır"
+        "--compare",
+        type=Path,
+        metavar="DOC",
+        help="compare the SQL result against this document",
     )
     parser.add_argument("--stats", action="store_true")
     args = parser.parse_args()
 
     if not (args.phrase or args.word or args.stats):
-        parser.error("--phrase, --word veya --stats gerekiyor")
+        parser.error("one of --phrase, --word or --stats is required")
 
-    print(f"Bağlanıyor: {db.describe()}")
+    print(f"Connecting: {db.describe()}")
     client = db.connect()
 
     if args.stats:
         result = client.query(queries.LIBRARY_STATS, parameters={"project": args.project})
-        print(f"\nKütüphane ({args.project}):")
+        print(f"\nLibrary ({args.project}):")
         for name, value in zip(result.column_names, result.result_rows[0]):
             print(f"  {name:22} {value}")
 
     if args.word:
         rows = word_search(client, args.project, args.word, args.tone, args.limit)
-        print(f'\n"{args.word}" -> {len(rows)} geçiş')
+        print(f'\n"{args.word}" -> {len(rows)} occurrences')
         for index, row in enumerate(rows, start=1):
             print(
-                f"  {index:>3}. {row['take_id']} kam={row['camera'] or '-'} "
-                f"satır={row['line_id']} ton={row['tone']} "
+                f"  {index:>3}. {row['take_id']} cam={row['camera'] or '-'} "
+                f"line={row['line_id']} tone={row['tone']} "
                 f"[{row['start_ms']}-{row['end_ms']} ms] "
-                f"güven={row['confidence']:.2f} {row['word']!r}"
+                f"conf={row['confidence']:.2f} {row['word']!r}"
             )
 
     if args.phrase:
         matches = phrase_search(client, args.project, args.phrase, args.tone)
-        filtre = f" (ton={args.tone})" if args.tone else ""
-        print(f'\n"{args.phrase}"{filtre} -> {len(matches)} eşleşme')
+        applied = f" (tone={args.tone})" if args.tone else ""
+        print(f'\n"{args.phrase}"{applied} -> {len(matches)} matches')
         for index, match in enumerate(matches, start=1):
             duration = match["end_ms"] - match["start_ms"]
             print(
-                f"  {index}. {match['take_id']} kam={match['camera'] or '-'} "
-                f"satır={match['line_id']} ton={match['tone']} "
+                f"  {index}. {match['take_id']} cam={match['camera'] or '-'} "
+                f"line={match['line_id']} tone={match['tone']} "
                 f"({match['tone_score']:.2f}) "
                 f"[{match['start_ms']}-{match['end_ms']} ms, {duration} ms]"
             )
             print(f"     {match['text']}")
-            print(f"     kaynak: {match['source_url']}")
+            print(f"     source: {match['source_url']}")
 
         if args.compare:
             if not compare_with_reference(args.compare, args.phrase, matches):

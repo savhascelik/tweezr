@@ -1,25 +1,25 @@
-# Yerel geliştirme ClickHouse'u.
+# Local development ClickHouse.
 #
 #   docker compose -f dev/docker-compose.yml up -d
-#   docker compose -f dev/docker-compose.yml down -v     # veriyi de sil
+#   docker compose -f dev/docker-compose.yml down -v     # drop the data too
 #
-# Buradaki şifre yerel geliştirmeye ait, gizli bir bilgi değil ve üretimde
-# kullanılmıyor. ClickHouse Cloud kimlik bilgileri ortam değişkenlerinden geliyor,
-# bkz. pipeline/db.py.
+# The password here belongs to local development, is not a secret, and is not used
+# in production. ClickHouse Cloud credentials come from environment variables, see
+# pipeline/db.py.
 
 services:
   clickhouse:
     image: clickhouse/clickhouse-server:25.3
     container_name: cinema-clickhouse
     ports:
-      # 8123 yerine 18123: makinede başka bir ClickHouse varsa çakışmasın
+      # 18123 instead of 8123: avoid clashing with another ClickHouse on the machine
       - "127.0.0.1:18123:8123"
     environment:
       CLICKHOUSE_DB: cinema
       CLICKHOUSE_USER: default
       CLICKHOUSE_PASSWORD: dev
     volumes:
-      # zz- öneki: config.d birleştirmesinde en son okunsun
+      # zz- prefix: so it is read last when config.d is merged
       - ./clickhouse-listen.xml:/etc/clickhouse-server/config.d/zz-listen.xml:ro
       - clickhouse-data:/var/lib/clickhouse
     ulimits:

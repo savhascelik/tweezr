@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- İngilizce varsayılan. i18n modülü açılışta lang ve title'ı seçilen dile
-         çekiyor; buradaki değerler JS gelmeden önce ve arama motorları için. -->
+    <!-- English by default. The i18n module pulls lang and title to the chosen locale on
+         startup; these values cover the state before JS runs, and search engines. -->
     <title>Line search and rough cut</title>
     <meta
       name="description"
@@ -13,9 +13,9 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <!-- Tek kök. Arayüz tamamen JS'ten kuruluyor ve hiçbir yerde innerHTML
-         kullanılmıyor; metinlerin kaynağı Whisper çıktısı ve dosya adları, yani
-         kontrol etmediğimiz veri. -->
+    <!-- One root. The interface is built entirely from JS and innerHTML is used nowhere;
+         the text comes from Whisper output and filenames, which is data we do not
+         control. -->
     <div id="app"></div>
 
     <noscript>
@@ -24,8 +24,8 @@
       </p>
     </noscript>
 
-    <!-- Build adımı yok: servis edilen dosya kaynağın kendisi. Modüller native
-         ES import kullanıyor, bundler yok, node_modules yok. -->
+    <!-- No build step: the file being served is the source. The modules use native ES
+         imports; no bundler, no node_modules. -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

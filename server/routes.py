@@ -1,11 +1,12 @@
-"""API uçları. WebMCP araçlarının ve sayfa içi panelin arkası.
+"""The API endpoints. What sits behind the WebMCP tools and the in-page panel.
 
-find_line LLM gerektirmiyor: cümle -> ClickHouse -> sıralı aday. Doğal dili araç
-parametrelerine çeviren ADK ajanı bunun ÜSTÜNE biniyor, altına değil. Bu yüzden arama
-Gemini anahtarı olmadan da tam çalışıyor.
+find_line needs no LLM: phrase -> ClickHouse -> ranked candidates. The ADK agent that
+turns natural language into these parameters sits ON TOP of this, not underneath, which
+is why search works fully with no Gemini key.
 
-Sıralama ürün mantığı, SQL'de değil burada: ton skoru yüksek olan önce. Ton filtresi
-verildiğinde bu doğrudan "o tonun en iyi örneği önce" demek oluyor.
+Ranking is product logic and lives here rather than in the SQL: the highest delivery
+confidence first. Given a tone filter that reads directly as "the best example of that
+delivery first".
 """
 
 from __future__ import annotations
@@ -21,16 +22,16 @@ from . import render as render_worker
 
 router = APIRouter(prefix="/api")
 
-# Paylaşılan istemci server/ch.py'de: ajan araçları da aynısını kullanıyor.
+# The shared client lives in server/ch.py, because the agent tools use the same one.
 clickhouse = ch.client
 drop_client = ch.drop
 
 
 def media_url(source_url: str) -> str:
-    """Kayıt referansını oynatılabilir URL'e çevirir.
+    """Turns a recording reference into a playable URL.
 
-    Yerelde /media altından servis ediliyor ve StaticFiles HTTP range destekliyor —
-    sanal kırpma oynatıcısının çalışması buna bağlı. Üretimde GCS signed URL.
+    Served locally from /media, and StaticFiles supports HTTP range, which the
+    virtual-splice player depends on. In production this becomes a GCS signed URL.
     """
     if source_url.startswith(("http://", "https://", "/")):
         return source_url
@@ -38,7 +39,7 @@ def media_url(source_url: str) -> str:
 
 
 def match_id(match: dict) -> str:
-    """Adayı referanslamak için kararlı kimlik. propose_cut bunları kullanıyor."""
+    """A stable id for referring to a candidate. propose_cut works from these."""
     return f"{match['take_id']}:{match['line_id']}:{match['start_ms']}"
 
 
@@ -57,17 +58,17 @@ def to_candidate(match: dict, rank: int) -> dict:
         "end_ms": match["end_ms"],
         "duration_ms": match["end_ms"] - match["start_ms"],
         "text": match["text"],
-        # provenance: fragment kaynağına geri gidebilsin
+        # provenance, so a fragment can be traced back to its source
         "source_url": match["source_url"],
         "media_url": media_url(match["source_url"]),
     }
 
 
-# --- Oturum ---
+# --- Session ---
 
 
 def current_session(request: Request, response: Response) -> dict:
-    """Oturumu döner, yoksa oluşturur. Kullanıcı hiçbir şey yapmıyor."""
+    """Returns the session, creating one if absent. The user does nothing."""
     existing = sessions.get(request.cookies.get(config.SESSION_COOKIE, ""))
     if existing:
         sessions.touch(existing["id"])
@@ -85,7 +86,7 @@ def current_session(request: Request, response: Response) -> dict:
         config.SESSION_COOKIE,
         session["id"],
         max_age=config.SESSION_TTL_DAYS * 24 * 3600,
-        httponly=True,      # sayfa JS'inin okumasına gerek yok, fetch otomatik gönderiyor
+        httponly=True,      # page JS has no need to read it; fetch sends it automatically
         samesite="lax",
         secure=request.url.scheme == "https",
         path="/",
@@ -94,8 +95,8 @@ def current_session(request: Request, response: Response) -> dict:
 
 
 def session_payload(session: dict) -> dict:
-    # Oturum kimliği DÖNMÜYOR. Çerezde duruyor, gövdede taşımanın faydası yok,
-    # log'lara ve ekran görüntülerine sızma riski var.
+    # The session id is NOT returned. It lives in the cookie; carrying it in a body buys
+    # nothing and risks leaking into logs and screenshots.
     return {
         "role": session["role"],
         "credits": session["credits"],
@@ -113,7 +114,7 @@ def read_session(request: Request, response: Response) -> dict:
     }
 
 
-# --- Arama ---
+# --- Search ---
 
 
 class FindLineRequest(BaseModel):
@@ -124,7 +125,7 @@ class FindLineRequest(BaseModel):
 
 
 def validate_project(project: str) -> str:
-    # project_id istekten geliyor, allowlist dışına çıkmasın
+    # project_id arrives in the request, so keep it inside the allowlist
     if project not in config.ALLOWED_PROJECTS:
         raise HTTPException(status_code=404, detail=f"Unknown project: {project}")
     return project
@@ -161,7 +162,7 @@ def find_line(body: FindLineRequest, request: Request, response: Response) -> di
         drop_client()
         raise HTTPException(status_code=503, detail=f"Search failed: {error}")
 
-    # Ürün mantığı: en iyi örnek önce. Ton skoru eşitse daha güvenli hizalama önce.
+    # Product logic: best example first. On a tie, the more confident alignment first.
     matches.sort(key=lambda m: (-float(m["tone_score"]), m["take_id"], m["start_ms"]))
     candidates = [
         to_candidate(match, rank)
@@ -201,7 +202,7 @@ def word_occurrences(
     project: str = config.DEMO_PROJECT,
     tone: str = "",
 ) -> dict:
-    """Tek kelimenin geçtiği yerler. Kelime cımbızlama arayüzünün arkası."""
+    """Every occurrence of a single word. Behind the word-assembly interface."""
     current_session(request, response)
     validate_project(project)
     validate_tone(tone)
@@ -235,8 +236,6 @@ def word_occurrences(
 
 
 # --- Render ---
-# Henüz uygulanmadı. Kredi düşürüp iş yapmamak yerine açıkça 503 dönüyor:
-# çalışmayan bir şey için kredi harcamak sessiz veri kaybı olur.
 
 
 class Segment(BaseModel):
@@ -267,8 +266,8 @@ async def render(
                 detail=f"Invalid range: {segment.start_ms}-{segment.end_ms}",
             )
 
-    # Sıra önemli: DOĞRULAMA önce, kredi sonra. Reddedilen bir istek için kredi
-    # düşürmek kullanıcının hatasını ona ödetmek olur.
+    # Order matters: VALIDATE first, charge second. Taking a credit for a request we
+    # rejected means making the user pay for their own mistake.
     try:
         job, steps, total = render_worker.enqueue(
             session["id"], project, [segment.model_dump() for segment in body.segments]
@@ -281,7 +280,7 @@ async def render(
 
     try:
         remaining = sessions.charge(
-            session["id"], config.COST_RENDER, f"render {job.id} ({job.segments} parça)"
+            session["id"], config.COST_RENDER, f"render {job.id} ({job.segments} segments)"
         )
     except sessions.InsufficientCredits as error:
         job.status = "failed"
@@ -310,7 +309,7 @@ async def render(
 def render_status(job_id: str, request: Request, response: Response) -> dict:
     session = current_session(request, response)
     job = render_worker.get(job_id)
-    # Başka oturumun işini 404 olarak veriyoruz: var olduğunu bile söylemiyoruz
+    # Another session's job is a 404: we do not even confirm it exists
     if job is None or job.session_id != session["id"]:
         raise HTTPException(status_code=404, detail="No such render job.")
     return job.public()
@@ -325,8 +324,8 @@ def render_file(job_id: str, request: Request, response: Response):
     if job.status != "done" or job.output is None or not job.output.is_file():
         raise HTTPException(status_code=409, detail=f"The render is not ready: {job.status}")
 
-    # StaticFiles ile mount ETMİYORUZ: çıktılar oturuma ait, dizin listelenebilir
-    # ya da kimliği bilen herkes tarafından indirilebilir olmamalı.
+    # NOT mounted as StaticFiles: outputs belong to a session, and the directory should
+    # be neither listable nor downloadable by anyone who learns an id.
     return FileResponse(
         job.output,
         filename=f"roughcut-{job.id}{job.output.suffix}",
@@ -334,12 +333,12 @@ def render_file(job_id: str, request: Request, response: Response):
     )
 
 
-# --- Sayfa içi sohbet (ADK ajanı) ---
+# --- In-page assistant (the ADK agent) ---
 #
-# Bu uç harici ajanın YERİNE geçmiyor, ajanı OLMAYAN kullanıcı için var. WebMCP
-# araçları doğrudan API'ye gidiyor; ChatGPT gibi bir istemci zaten LLM olduğu için
-# parametre eşleştirmesini ikinci bir modele yaptırmak gecikmeden başka bir şey
-# eklemezdi. Ayrıntı: server/agent.py
+# This endpoint does not REPLACE the external agent, it serves the visitor who has NO
+# agent. The WebMCP tools go straight to the API; a client like ChatGPT is already an LLM,
+# so having a second model redo the parameter mapping would add nothing but latency.
+# Detail: server/agent.py
 
 
 class ChatRequest(BaseModel):
@@ -348,11 +347,11 @@ class ChatRequest(BaseModel):
 
 @router.get("/chat/status")
 def chat_status(request: Request, response: Response) -> dict:
-    """Sohbet kullanılabilir mi. Arayüz kutuyu buna göre gösteriyor.
+    """Whether the assistant is available. The interface shows the box based on this.
 
-    `reason_code` makine okunur, `reason` insan okunur ve İngilizce. Sunucu
-    kullanıcının dilini bilmiyor; istemci kodu görüp kendi dilinde yazıyor ve
-    tanımadığı bir kod gelirse buradaki metne düşüyor.
+    reason_code is machine-readable and reason is human-readable English. The server does
+    not know the reader's language; the client sees the code and writes the sentence in
+    its own, falling back to this text for a code it does not recognise.
     """
     session = current_session(request, response)
     available = agent.available()

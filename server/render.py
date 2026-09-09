@@ -1,14 +1,14 @@
-"""Render işçisi. Onaylanmış kesimi tek dosyaya birleştiriyor.
+"""The render worker. Joins an approved cut into one file.
 
-GÜVENLİK — kesilecek dosya yolu İSTEKTEN GELMİYOR.
+SECURITY — the path to the file being cut does NOT come from the request.
 
-İstek sadece `candidate_id` (`take_id:line_id:start_ms`) ve zaman aralığı taşıyor.
-Medya yolu ClickHouse'daki `source_url`'den türetiliyor, `MEDIA_DIR` altına çözülüyor
-ve gerçekten orada olduğu doğrulanıyor. İstemciye dosya adı söyletmek path traversal
-demek olurdu (`../../.env`), ve ffmpeg'e verilen her yol okunabilir bir dosyadır.
+The request carries only a candidate_id (take_id:line_id:start_ms) and a time range. The
+media path is derived from source_url in ClickHouse, resolved under MEDIA_DIR, and
+checked to actually be there. Letting the client name a file would be path traversal
+(../../.env), and every path handed to ffmpeg is a readable file.
 
-Zaman aralığı da doğrulanıyor: take'in bilinen süresinin dışına taşamıyor ve toplam
-çıktı süresi sınırlı. Aksi halde tek istekle saatlerce CPU yakılabilir.
+The time range is validated too: it cannot fall outside the take's known duration, and
+total output length is capped. Otherwise one request could burn hours of CPU.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from pathlib import Path
 
 from . import ch, config
 
-# Bir çıktının en fazla süresi. Tek istekle saatlerce CPU yakılmasını engelliyor.
+# The longest output allowed. Stops a single request burning hours of CPU.
 MAX_OUTPUT_MS = 10 * 60 * 1000
-# Segment kenarlarında izin verilen pay: kurgucu birkaç kare nefes bırakmak isteyebilir.
+# Slack allowed at segment edges: an editor may want a few frames of breathing room.
 EDGE_TOLERANCE_MS = 500
 FFMPEG_TIMEOUT_S = 300
 
@@ -59,8 +59,8 @@ class Job:
         return payload
 
 
-# İşler bellekte. Oturumlar gibi geçici: yeniden başlatmada kayboluyorlar ve bu
-# kabul edilen davranış, kalıcı bir kuyruk bu ölçekte gereksiz karmaşıklık.
+# Jobs live in memory. Ephemeral like sessions: they vanish on restart, which is accepted
+# behaviour, because a durable queue would be unnecessary complexity at this scale.
 _jobs: dict[str, Job] = {}
 
 
@@ -83,14 +83,14 @@ def ffmpeg_exe() -> str:
 
 
 class RenderRejected(Exception):
-    """İstek doğrulamayı geçemedi. Kredi harcanmadan reddediliyor."""
+    """The request failed validation. Rejected without spending credit."""
 
 
 def resolve_media(source_url: str) -> Path:
-    """`source_url` -> MEDIA_DIR altındaki gerçek dosya.
+    """source_url -> the real file under MEDIA_DIR.
 
-    Sadece taban adı alınıyor, sonra çözülen yolun MEDIA_DIR içinde kaldığı
-    doğrulanıyor. İkisi birlikte path traversal'ı kapatıyor.
+    Only the basename is taken, and then the resolved path is checked to still be inside
+    MEDIA_DIR. Together those two close path traversal.
     """
     name = Path(source_url.replace("\\", "/")).name
     if not name or name in (".", ".."):
@@ -106,7 +106,7 @@ def resolve_media(source_url: str) -> Path:
 
 
 def take_bounds(project: str, take_ids: list[str]) -> dict[str, dict]:
-    """Take başına kaynak dosya ve bilinen süre. Doğrulamanın dayanağı bu."""
+    """Source file and known duration per take. This is what validation rests on."""
     result = ch.client().query(
         """
         SELECT take_id, any(source_url) AS source_url, max(end_ms) AS last_ms
@@ -123,13 +123,13 @@ def take_bounds(project: str, take_ids: list[str]) -> dict[str, dict]:
 
 
 def plan(project: str, requested: list[dict]) -> tuple[list[dict], int]:
-    """İsteği doğrulanmış render planına çevirir. (plan, toplam süre) döner."""
+    """Turns the request into a validated render plan. Returns (plan, total duration)."""
     if not requested:
         raise RenderRejected("The cut is empty.")
 
     take_ids: list[str] = []
     for item in requested:
-        # candidate_id formatı: take_id:line_id:start_ms
+        # candidate_id format: take_id:line_id:start_ms
         take_id = str(item["candidate_id"]).split(":")[0]
         if not take_id:
             raise RenderRejected(f"Unusable candidate id: {item['candidate_id']!r}")
@@ -174,11 +174,11 @@ def plan(project: str, requested: list[dict]) -> tuple[list[dict], int]:
 
 
 def has_video(media: Path) -> bool:
-    """Dosyada video akışı var mı.
+    """Does the file have a video stream.
 
-    imageio-ffmpeg ffprobe getirmiyor, o yüzden ffmpeg'in kendi çıktısını okuyoruz.
-    Girdisiz çalıştırıldığında ffmpeg akış özetini stderr'e yazıp hata veriyor;
-    bize gereken tam olarak o özet.
+    imageio-ffmpeg ships no ffprobe, so we read ffmpeg's own output. Given only an input,
+    ffmpeg prints the stream summary to stderr and then errors out; that summary is
+    exactly what we need.
     """
     result = subprocess.run(
         [ffmpeg_exe(), "-hide_banner", "-i", str(media)],
@@ -191,11 +191,11 @@ def has_video(media: Path) -> bool:
 
 
 def build_command(steps: list[dict], out: Path, mode: str) -> list[str]:
-    """concat FILTRESI kullanıyoruz, concat demuxer değil.
+    """Uses the concat FILTER, not the concat demuxer.
 
-    Demuxer tüm girdilerin aynı codec ve parametrelerde olmasını istiyor; farklı
-    take'ler farklı kayıtlardan gelebilir. Filtre yeniden encode ediyor ve bunu
-    tolere ediyor. Ortak örnekleme hızına normalize etmek de aynı sebeple.
+    The demuxer wants every input to share codec and parameters, and different takes can
+    come from different recordings. The filter re-encodes and tolerates that. Normalising
+    to a common sample rate is for the same reason.
     """
     command = [ffmpeg_exe(), "-y", "-hide_banner", "-loglevel", "error"]
     for step in steps:
@@ -228,7 +228,7 @@ def build_command(steps: list[dict], out: Path, mode: str) -> list[str]:
 
 
 def run_blocking(job: Job, steps: list[dict]) -> None:
-    """FFmpeg'i çalıştırır. Ayrı bir thread'de, event loop'u bloke etmesin."""
+    """Runs FFmpeg. On its own thread, so it does not block the event loop."""
     try:
         job.status = "running"
         job.mode = "video" if all(has_video(step["media"]) for step in steps) else "audio"
@@ -236,7 +236,7 @@ def run_blocking(job: Job, steps: list[dict]) -> None:
 
         output_dir = config.RENDER_DIR
         output_dir.mkdir(parents=True, exist_ok=True)
-        # Geçici dosyaya yazıp taşıyoruz: yarım kalmış çıktı indirilebilir olmasın
+        # Write to a temporary file and move it, so a half-finished output is never downloadable
         with tempfile.TemporaryDirectory() as tmp:
             staging = Path(tmp) / f"out{suffix}"
             result = subprocess.run(
@@ -262,7 +262,7 @@ def run_blocking(job: Job, steps: list[dict]) -> None:
 
 
 def enqueue(session_id: str, project: str, requested: list[dict]) -> tuple[Job, list[dict], int]:
-    """Doğrular ve iş kaydı oluşturur. Doğrulama başarısızsa kredi harcanmıyor."""
+    """Validates and creates the job record. On validation failure no credit is spent."""
     if active_for_session(session_id) >= config.MAX_CONCURRENT_RENDERS_PER_SESSION:
         raise RenderRejected(
             "A render is already running in this session. Wait for it to finish."
@@ -280,5 +280,5 @@ def enqueue(session_id: str, project: str, requested: list[dict]) -> tuple[Job, 
 
 
 async def start(job: Job, steps: list[dict]) -> None:
-    """İşi arka planda başlatır."""
+    """Starts the job in the background."""
     await asyncio.to_thread(run_blocking, job, steps)

@@ -1,9 +1,10 @@
-"""Veri kontratı — tek doğruluk kaynağı.
+"""The data contract — single source of truth.
 
-Hem elle yazılan fixture, hem Whisper çıktısı, hem ClickHouse satırları buradan geçiyor.
-Normalizasyon tek yerde durduğu için fixture ile pipeline arasında sapma olamaz.
+The hand-written fixture, the Whisper output and the ClickHouse rows all pass through
+here. Normalisation lives in exactly one place, so the fixture and the pipeline cannot
+drift apart on what a word is.
 
-Ingest dokümanı (iç içe, insan okuyabilir):
+Ingest document, nested and human-readable:
 
     {
       "project_id": "demo",
@@ -21,15 +22,16 @@ Ingest dokümanı (iç içe, insan okuyabilir):
       ]
     }
 
-flatten_rows() bunu ClickHouse `words` tablosunun satırlarına çeviriyor.
-`word_norm` fixture'da YOK — türetiliyor. Kasıtlı: iki tarafta elle yazılırsa kayar.
+flatten_rows() turns that into rows of the ClickHouse `words` table.
+`word_norm` is NOT in the fixture, it is derived. Deliberately: written by hand on both
+sides it would eventually disagree with itself.
 """
 
 from __future__ import annotations
 
 import unicodedata
 
-# ClickHouse kolon sırası. insert() bu sırayı bekliyor.
+# ClickHouse column order. insert() expects exactly this.
 COLUMNS = [
     "project_id",
     "take_id",
@@ -49,13 +51,13 @@ COLUMNS = [
 
 TONES = ("neutral", "calm", "tense", "angry", "whisper", "shouted")
 
-# Kelime kenarlarından atılacak noktalama. Kelime İÇİNDEKİ kesme işareti korunuyor
-# ("don't" tek kelime kalsın), tire de korunuyor ("well-known").
+# Punctuation stripped from the edges of a word. An apostrophe INSIDE a word survives
+# so "don't" stays one word, and so does a hyphen, so "well-known" stays one word.
 _EDGE_PUNCT = "\"'`.,!?;:()[]{}<>…—–-*_"
 
 
 def normalize_word(word: str) -> str:
-    """Arama anahtarı. Küçük harf, kenar noktalaması atılmış, Unicode NFKC.
+    """The search key. Lowercased, edge punctuation removed, Unicode NFKC.
 
     >>> normalize_word('"Asked,')
     'asked'
@@ -67,12 +69,12 @@ def normalize_word(word: str) -> str:
 
 
 def normalize_phrase(phrase: str) -> list[str]:
-    """Aranan cümleyi normalize kelime listesine çevirir. Boşlar düşer."""
+    """Turns a searched phrase into normalised words. Empty results drop out."""
     return [w for w in (normalize_word(p) for p in phrase.split()) if w]
 
 
 def flatten_rows(doc: dict) -> list[tuple]:
-    """Ingest dokümanı -> ClickHouse satırları. Sıra COLUMNS ile aynı."""
+    """Ingest document -> ClickHouse rows, in COLUMNS order."""
     project_id = doc["project_id"]
     rows: list[tuple] = []
 
@@ -81,8 +83,8 @@ def flatten_rows(doc: dict) -> list[tuple]:
             tone = line.get("tone") or "neutral"
             if tone not in TONES:
                 raise ValueError(
-                    f"{take['take_id']} satır {line['line_id']}: bilinmeyen ton {tone!r}. "
-                    f"Geçerli: {TONES}"
+                    f"{take['take_id']} line {line['line_id']}: unknown tone {tone!r}. "
+                    f"Allowed: {TONES}"
                 )
             for word in line["words"]:
                 rows.append(
@@ -107,35 +109,35 @@ def flatten_rows(doc: dict) -> list[tuple]:
 
 
 def validate(doc: dict) -> list[str]:
-    """Ingest dokümanını kontrol eder. Sorun listesi döner, boşsa temiz.
+    """Checks an ingest document. Returns a list of problems; empty means clean.
 
-    Hizalama kalitesini de burada ölçüyoruz — asıl riskimiz o.
+    Alignment quality is measured here too, since that is the real risk.
     """
     problems: list[str] = []
 
     if not doc.get("project_id"):
-        problems.append("project_id boş")
+        problems.append("project_id is empty")
     if not doc.get("takes"):
-        problems.append("takes boş")
+        problems.append("takes is empty")
 
     for take in doc.get("takes", []):
-        tid = take.get("take_id", "<isimsiz>")
+        tid = take.get("take_id", "<unnamed>")
         if not take.get("lines"):
-            problems.append(f"{tid}: satır yok")
+            problems.append(f"{tid}: no lines")
 
         seen_lines = set()
         for line in take.get("lines", []):
             lid = line.get("line_id")
             if lid in seen_lines:
-                problems.append(f"{tid}: line_id {lid} tekrar ediyor")
+                problems.append(f"{tid}: line_id {lid} appears twice")
             seen_lines.add(lid)
 
             words = line.get("words", [])
             if not words:
-                problems.append(f"{tid}/{lid}: kelime yok")
+                problems.append(f"{tid}/{lid}: no words")
                 continue
 
-            # Metin ile kelime dizisi tutuyor mu
+            # Does the text agree with the word sequence
             if line.get("text"):
                 from_words = " ".join(
                     n for n in (normalize_word(w["word"]) for w in words) if n
@@ -143,7 +145,7 @@ def validate(doc: dict) -> list[str]:
                 from_text = " ".join(normalize_phrase(line["text"]))
                 if from_words != from_text:
                     problems.append(
-                        f"{tid}/{lid}: text ile words uyuşmuyor\n"
+                        f"{tid}/{lid}: text and words disagree\n"
                         f"    text : {from_text}\n"
                         f"    words: {from_words}"
                     )
@@ -154,13 +156,13 @@ def validate(doc: dict) -> list[str]:
                 label = f"{tid}/{lid} {word['word']!r}"
 
                 if end <= start:
-                    problems.append(f"{label}: süre sıfır veya negatif ({start}->{end})")
+                    problems.append(f"{label}: zero or negative duration ({start}->{end})")
                 elif end - start > 3000:
-                    problems.append(f"{label}: {end - start} ms, tek kelime için fazla uzun")
+                    problems.append(f"{label}: {end - start} ms, too long for one word")
 
                 if prev_end is not None and start < prev_end:
                     problems.append(
-                        f"{label}: önceki kelimeyle {prev_end - start} ms çakışıyor"
+                        f"{label}: overlaps the previous word by {prev_end - start} ms"
                     )
                 prev_end = end
 
@@ -168,7 +170,7 @@ def validate(doc: dict) -> list[str]:
 
 
 def alignment_report(doc: dict) -> dict:
-    """Hizalama kalitesi istatistikleri. 'Whisper temiz kesiyor mu' sorusunun sayısal tarafı."""
+    """Alignment quality statistics — the numeric half of "does Whisper cut cleanly"."""
     durations: list[int] = []
     gaps: list[int] = []
     zero_length = 0

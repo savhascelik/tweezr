@@ -1,35 +1,35 @@
 /**
- * Tek durum kaynağı.
+ * The single source of truth.
  *
- * WebMCP araçları ve sayfa paneli AYNI store'u değiştiriyor. Bu tesadüf değil:
- * `get_timeline_state` aracının okuyacağı tek bir doğru yer olmak zorunda, yoksa
- * ajanın gördüğü timeline ile insanın gördüğü timeline ayrışır — ki bu ürünün
- * bütün iddiasını çürütür.
+ * The WebMCP tools and the on-page panel change the SAME store. That is not incidental:
+ * get_timeline_state needs exactly one correct place to read from, or the timeline the
+ * agent sees drifts from the timeline the human sees, which would undo the product's
+ * entire claim.
  *
- * React yok. Bu arayüzde React'in çözdüğü bir problem yok ve bir build adımı
- * eklemek Cloud Run imajına node aşaması getiriyor. İhtiyaç duyulan tek şey
- * abone olunabilen bir durum, o da aşağıdaki 40 satır.
+ * No React. Nothing in this interface is a problem React solves, and adding a build step
+ * would put a node stage in the Cloud Run image. The only requirement is state you can
+ * subscribe to, and that is the forty lines below.
  */
 
 const state = {
   session: null,          // {role, credits, costs}
-  library: null,          // ClickHouse istatistikleri
+  library: null,          // ClickHouse statistics
   query: { phrase: "", tone: "" },
-  candidates: [],         // find_line sonucu
-  timeline: [],           // önerilen kesim: [{id, ...aday}]
+  candidates: [],         // the find_line result
+  timeline: [],           // the proposed cut: [{id, ...candidate}]
   playback: { playing: false, index: -1, offsetMs: 0 },
   status: { kind: "idle", message: "" },
   webmcp: { available: false, registered: 0 },
-  // Sayfa içi sohbet. Harici ajanın yerine geçmiyor, ajanı OLMAYAN kullanıcı için.
+  // The in-page assistant. Not a replacement for an external agent; for the visitor with NONE.
   chat: { available: false, reason: "", messagesLeft: 0, busy: false, messages: [] },
-  // Render işi. status: idle | queued | running | done | failed
+  // The render job. status: idle | queued | running | done | failed
   render: { status: "idle", jobId: null, downloadUrl: null, mode: null },
 };
 
 const listeners = new Set();
 
 export function getState() {
-  // Kopya döndürüyoruz: dışarıdan doğrudan mutasyon store'u sessizce bozar.
+  // A copy, because mutating this from outside would corrupt the store silently.
   return structuredClone(state);
 }
 
@@ -43,8 +43,8 @@ function notify() {
     try {
       listener(state);
     } catch (error) {
-      // Bir abonenin hatası diğerlerini düşürmesin
-      console.error("store abonesi hata verdi", error);
+      // One subscriber's failure must not take down the others
+      console.error("a store subscriber failed", error);
     }
   }
 }
@@ -59,9 +59,9 @@ export function setStatus(kind, message) {
   notify();
 }
 
-// --- Timeline işlemleri ---
-// propose_cut, swap ve remove hepsi buradan geçiyor ki ajan ve insan aynı
-// veriyi değiştirsin.
+// --- Timeline operations ---
+// propose_cut, swap and remove all go through here, so the agent and the human are
+// changing the same data.
 
 export function setTimeline(segments) {
   state.timeline = segments.map(normalizeSegment);
@@ -97,18 +97,18 @@ export function setChat(chat) {
 }
 
 /**
- * Sayfa içi asistanın sonucunu duruma uygular.
+ * Applies the in-page assistant's result to the state.
  *
- * Kural burada duruyor, sohbet çağrısının içinde değil: ajanın bulduğu adaylar ve
- * koyduğu öneri, WebMCP araçlarının değiştirdiği AYNI timeline'a gidiyor. İki giriş
- * kapısı için iki ayrı uygulama kuralı olsa store ayrışırdı.
+ * The rule lives here rather than inside the chat call: the candidates the agent found
+ * and the proposal it placed go to the SAME timeline the WebMCP tools change. Two entry
+ * points with two separate application rules would let the store drift.
  */
 export function applyAgentResult({ candidates = [], proposal = [] } = {}) {
   if (candidates.length) {
     state.candidates = candidates;
   }
 
-  // Öneri kimlik listesi; segmentleri bu turdan gelen adaylardan çözüyoruz.
+  // The proposal is a list of ids; segments are resolved from this turn's candidates.
   const known = new Map(
     (candidates.length ? candidates : state.candidates).map((item) => [item.id, item])
   );
@@ -123,7 +123,7 @@ export function applyAgentResult({ candidates = [], proposal = [] } = {}) {
   return {
     candidates: state.candidates.length,
     segments: state.timeline.length,
-    // Sessizce yutmuyoruz: çözülemeyen kimlik varsa çağıran bilsin
+    // Not swallowed silently: if an id could not be resolved, the caller should know
     dropped,
   };
 }

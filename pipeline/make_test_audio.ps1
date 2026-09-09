@@ -1,21 +1,22 @@
-# Windows SAPI ile bilinen metinli test sesi üretir.
+# Generates known-text test audio with Windows SAPI.
 #
-# Amaç: kendi çekimin hazır olmadan pipeline'ı ayağa kaldırmak. Ground truth metni
-# elimizde olduğu için Whisper'ın hizalamasını karşılaştırabiliyoruz.
+# The point: get the pipeline running before your own footage exists. Because we know the
+# ground truth text, we can compare what Whisper's alignment produced against it.
 #
-# UYARI: TTS sesi gerçek konuşmadan temiz. Bu test pipeline mekaniğini doğrular,
-# gerçek materyalde hizalama kalitesini DOĞRULAMAZ. Onu kendi çekiminle ölçeceksin.
+# WARNING: synthesised speech is cleaner than real speech. This test verifies the
+# pipeline's mechanics; it does NOT verify alignment quality on real material. That has
+# to be measured on your own footage.
 #
 #   powershell -ExecutionPolicy Bypass -File make_test_audio.ps1
 
 param(
     [string]$OutFile = "sample.wav",
-    [int]$Rate = 0   # -10 (yavaş) .. 10 (hızlı)
+    [int]$Rate = 0   # -10 (slow) .. 10 (fast)
 )
 
 $ErrorActionPreference = "Stop"
 
-# Hedef replik iki kere geçiyor: "aynı repliğin başka take'i" senaryosunu taklit ediyor.
+# The target line appears twice, which imitates "the same line in another take".
 $script = "Okay, quiet on set. I never asked for this. Take it again from the top. I never asked for this."
 
 Add-Type -AssemblyName System.Speech
@@ -31,9 +32,9 @@ finally {
     $synth.Dispose()
 }
 
-Write-Host "Yazıldı: $fullPath"
+Write-Host "Written: $fullPath"
 Write-Host ""
-Write-Host "Ground truth metin:"
+Write-Host "Ground truth text:"
 Write-Host "  $script"
 Write-Host ""
-Write-Host 'Hedef replik 2 kere geciyor: "I never asked for this"'
+Write-Host 'The target line occurs twice: "I never asked for this"'

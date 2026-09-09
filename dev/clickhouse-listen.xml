@@ -1,15 +1,16 @@
 <?xml version="1.0"?>
 <!--
-  Yerel geliştirme için listen adresi düzeltmesi.
+  Listen address fix for local development.
 
-  25.3 imajında config.xml `127.0.0.1` ve `::1`'i açık bırakıyor. Konteynerde IPv6
-  kapalı olduğu için `[::]` bind'i "Address family for hostname not supported" ile
-  düşüyor ve sunucu sadece localhost'ta dinliyor — host'tan erişilemiyor.
+  In the 25.3 image config.xml leaves `127.0.0.1` and `::1` uncommented. IPv6 is
+  disabled inside the container, so the `[::]` bind fails with "Address family for
+  hostname not supported" and the server ends up listening on localhost only --
+  unreachable from the host.
 
-  replace="replace" mevcut listen_host listesini EKLEMİYOR, değiştiriyor. Ekleme
-  yapsak 0.0.0.0 ile 127.0.0.1 aynı portta çakışıyor.
+  replace="replace" does NOT append to the existing listen_host list, it replaces
+  it. Appending would make 0.0.0.0 and 127.0.0.1 collide on the same port.
 
-  Bu sadece yerel Docker içindir. Cloud Run / ClickHouse Cloud tarafında kullanılmıyor.
+  This is for local Docker only. Not used on the Cloud Run / ClickHouse Cloud side.
 -->
 <clickhouse>
     <listen_host replace="replace">0.0.0.0</listen_host>

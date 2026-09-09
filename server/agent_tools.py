@@ -1,16 +1,16 @@
-"""ADK ajanının araçları. LLM olmadan da çalışan saf fonksiyonlar.
+"""The ADK agent's tools. Plain functions that work without an LLM.
 
-İki şey burada kasıtlı:
+Two things here are deliberate.
 
-**Docstring'ler ajanın gördüğü şemadır.** ADK imza ve docstring'den araç tanımı
-üretiyor, yani buradaki metin dokümantasyon değil arayüz. O yüzden fonksiyonların
-NE yaptığından çok NE ZAMAN kullanılacağını anlatıyorlar ve İngilizce yazılmışlar
-(modelin çalıştığı dil).
+**The docstrings are the schema the agent sees.** ADK builds the tool definition from the
+signature and the docstring, so that text is interface rather than documentation. Which
+is why they say WHEN to reach for a function more than what it does.
 
-**Öneri tarayıcıya bir toplayıcı üzerinden dönüyor.** Ajan sunucuda koşuyor, sayfanın
-store'una dokunamıyor. Araç niyetini istek başına bir ContextVar'a yazıyor, sohbet
-cevabı onu tarayıcıya taşıyor ve sayfa aynı `actions.propose()` ile uyguluyor —
-yani harici ajan ile sayfa içi sohbet AYNI store'u aynı yoldan değiştiriyor.
+**The proposal reaches the browser through a collector.** The agent runs server-side and
+cannot touch the page store. A tool records its intent in a per-request ContextVar, the
+reply carries that to the browser, and the page applies it through the same
+actions.propose() — so the external agent and the in-page assistant change the SAME store
+the same way.
 """
 
 from __future__ import annotations
@@ -21,15 +21,15 @@ from pipeline import queries, schema, search
 
 from . import ch, config
 
-# İstek başına toplayıcı. Eşzamanlı isteklerin birbirine karışmaması için
-# ContextVar; global bir sözlük iki kullanıcının önerisini birbirine bulaştırırdı.
+# Per-request collector. A ContextVar so concurrent requests cannot mix; a
+# module-level dict would leak one visitor's proposal into another's.
 _collector: contextvars.ContextVar[dict | None] = contextvars.ContextVar(
     "agent_collector", default=None
 )
 
 
 def new_collection() -> dict:
-    """İstek başına toplayıcıyı kurar ve döner."""
+    """Sets up the per-request collector and returns it."""
     collection = {"candidates": [], "proposal": [], "tool_calls": []}
     _collector.set(collection)
     return collection
@@ -47,7 +47,7 @@ def _record(name: str, args: dict) -> None:
 
 
 def _candidate(match: dict, rank: int) -> dict:
-    """routes.to_candidate ile aynı şekil. Sayfa ikisini ayırt etmek zorunda kalmasın."""
+    """The same shape as routes.to_candidate, so the page never has to tell them apart."""
     from . import routes
 
     return routes.to_candidate(match, rank)
@@ -88,7 +88,7 @@ def find_line(phrase: str, tone: str = "") -> dict:
     matches.sort(key=lambda m: (-float(m["tone_score"]), m["take_id"], m["start_ms"]))
     candidates = [_candidate(match, rank) for rank, match in enumerate(matches, start=1)]
 
-    # Sayfa adayları store'a koyacak, yani kullanıcı ajanın ne bulduğunu görüyor
+    # The page puts these in the store, so the user sees what the agent found
     collection()["candidates"] = candidates
 
     if not candidates:
@@ -189,7 +189,7 @@ def get_library_stats() -> dict:
         return {"error": f"library query failed: {error}"}
 
     stats = dict(zip(result.column_names, result.result_rows[0]))
-    # ClickHouse dizi döndürüyor; JSON'a çevrilebilir hale getiriyoruz
+    # ClickHouse returns an array type; make it JSON-serialisable
     stats["tones"] = list(stats.get("tones") or [])
     return stats
 

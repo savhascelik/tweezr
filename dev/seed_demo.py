@@ -1,19 +1,21 @@
-"""Yerelde oynatılabilir demo korpusu kurar.
+"""Builds a playable demo corpus locally.
 
     python -m dev.seed_demo
 
-Neden gerekli: fixture.json bir KONTRAT örneği, `gs://` yollarına işaret ediyor ve o
-dosyalar yok. Arayüzü geliştirmek için gerçekten çalan medya lazım.
+Why it is needed: fixture.json is an example of the CONTRACT, it points at `gs://`
+paths and those files do not exist. Developing the interface needs media that
+actually plays.
 
-Ne yapıyor: aynı repliği Windows SAPI ile üç farklı sunumda sentezliyor, gerçek Whisper
-pipeline'ından geçiriyor, ClickHouse'a yazıyor ve medyayı scratch/media altına koyuyor.
+What it does: synthesizes the same line in three different deliveries with Windows
+SAPI, runs it through the real Whisper pipeline, writes it to ClickHouse and puts
+the media under the demo media directory.
 
-TON ETİKETLERİ HAKKINDA DÜRÜST NOT:
-Buradaki tonlar sentez ayarından geliyor (hız, ses seviyesi), analizden değil. Yani
-"ölçülmüş" değil, "kurulmuş". Ama sesler GERÇEKTEN farklı sunuluyor, o yüzden bu
-etiketler Gemini ton geçişi için **ground truth** işlevi görüyor: pipeline.tone
-çalıştırıldığında yavaş olana "calm", hızlı olana "tense" demesi beklenir. Demezse
-sorun ton geçişinde.
+AN HONEST NOTE ABOUT THE TONE LABELS:
+The tones here come from the synthesis settings (rate, volume), not from analysis.
+So they are "set", not "measured". But the voices really are delivered differently,
+which is why these labels serve as **ground truth** for the Gemini tone pass: when
+pipeline.tone runs, it is expected to call the slow one "calm" and the fast one
+"tense". If it does not, the problem is in the tone pass.
 """
 
 from __future__ import annotations
@@ -30,11 +32,11 @@ from server import config
 
 LINE = "I never asked for this. Just let me go."
 
-# (take_id, kamera, SAPI hızı, SAPI ses seviyesi, ton etiketi, ne duyulacak)
+# (take_id, camera, SAPI rate, SAPI volume, tone label, what you will hear)
 TAKES = [
-    ("S01_T01", "A", 3, 100, "tense", "hızlı ve yüksek"),
-    ("S01_T03", "A", -2, 100, "calm", "yavaş ve ölçülü"),
-    ("S01_T05", "B", -1, 30, "whisper", "yavaş ve kısık"),
+    ("S01_T01", "A", 3, 100, "tense", "fast and loud"),
+    ("S01_T03", "A", -2, 100, "calm", "slow and measured"),
+    ("S01_T05", "B", -1, 30, "whisper", "slow and quiet"),
 ]
 
 SPEAKER = "MAYA"
@@ -71,12 +73,12 @@ def synthesize(out: Path, rate: int, volume: int, text: str) -> None:
 
 def main() -> int:
     if sys.platform != "win32":
-        print("Bu seed Windows SAPI kullanıyor. Başka platformda kendi kliplerini koy.")
+        print("This seed uses Windows SAPI. On another platform, drop in your own clips.")
         return 1
 
     media_dir = config.MEDIA_DIR
     media_dir.mkdir(parents=True, exist_ok=True)
-    # Bu ikisi de commit ediliyor: dağıtılan imajda bulunmaları gerekiyor.
+    # Both of these are committed: they have to be present in the deployed image.
     docs_dir = config.DEMO_TAKES_DIR
     docs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -94,11 +96,12 @@ def main() -> int:
             scene=SCENE,
             camera=camera,
             speaker=SPEAKER,
-            # Sunucu bunu /media/<dosya> URL'ine çeviriyor
+            # The server turns this into a /media/<file> URL
             source_url=wav.name,
         )
 
-        # Ton sentez ayarından geliyor, analizden değil. Bkz. modül başlığı.
+        # The tone comes from the synthesis setting, not from analysis. See the
+        # module docstring.
         for line in doc["takes"][0]["lines"]:
             line["tone"] = tone
             line["tone_score"] = 0.9
@@ -111,31 +114,31 @@ def main() -> int:
         transcript = " / ".join(l["text"] for l in doc["takes"][0]["lines"])
         print(f"   {stats['media_seconds']}s  rtf={stats['realtime_factor']}  {transcript}")
 
-    print("\nClickHouse'a yazılıyor...")
+    print("\nWriting to ClickHouse...")
     client = db.connect()
     db.create_table(client)
 
     total = 0
     for index, doc in enumerate(documents):
         total += ingest.ingest(client, doc, replace=(index == 0))
-    print(f"{total} satır")
+    print(f"{total} rows")
 
-    print("\nDoğrulama: aynı replik üç tonda bulunmalı")
+    print("\nVerification: the same line should be found in three tones")
     from pipeline import search
 
     for match in search.phrase_search(client, config.DEMO_PROJECT, "I never asked for this"):
         print(
-            f"   {match['take_id']}  kam={match['camera']}  ton={match['tone']:<8}"
+            f"   {match['take_id']}  cam={match['camera']}  tone={match['tone']:<8}"
             f"  [{match['start_ms']}-{match['end_ms']} ms]  {match['source_url']}"
         )
 
-    print(f"\nMedya: {media_dir}")
+    print(f"\nMedia: {media_dir}")
     for item in sorted(media_dir.glob("*.wav")):
         print(f"   /media/{item.name}  ({item.stat().st_size // 1024} KB)")
 
     print(
-        "\nGemini ton geçişini bu korpusla sına — etiketler ground truth:\n"
-        "   S01_T01 tense (hızlı) / S01_T03 calm (yavaş) / S01_T05 whisper (kısık)"
+        "\nTest the Gemini tone pass against this corpus -- the labels are ground truth:\n"
+        "   S01_T01 tense (fast) / S01_T03 calm (slow) / S01_T05 whisper (quiet)"
     )
     return 0
 

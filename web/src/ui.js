@@ -1,15 +1,16 @@
 /**
- * Arayüz. Kurgucunun zaten çalıştığı ekran: arama, adaylar, timeline, provenance.
+ * The interface. The screen the editor already works on: search, candidates, timeline,
+ * provenance.
  *
- * GÜVENLİK: burada innerHTML YOK, her metin textContent ile yazılıyor.
- * Sebebi somut: geçen projede onay penceresini innerHTML ile kurmuştuk ve
- * zehirli bir araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinlerin
- * kaynağı Whisper çıktısı ve kullanıcı dosya adları — yani kontrol etmediğimiz veri.
- * `el()` yardımcısı bilerek sadece textContent kabul ediyor.
+ * SECURITY: there is NO innerHTML here, every string is written with textContent.
+ * The reason is concrete: on the previous project we built the approval dialog with
+ * innerHTML and a poisoned tool name could press its own Approve button. The text here
+ * comes from Whisper output and user filenames, which is data we do not control. The
+ * `el()` helper deliberately accepts only textContent.
  *
- * Tüm metin `render()` içinde yazılıyor, kuruluş anında değil. Böylece dil değişimi
- * ekstra bir kod yolu gerektirmiyor: sabit etiketler ile dinamik metin aynı yerden
- * geçiyor ve ikisinin ayrışması mümkün olmuyor.
+ * All text is written inside `render()` rather than at construction. That way a locale
+ * change needs no extra code path: static labels and dynamic text flow through the same
+ * place, and the two cannot drift apart.
  */
 
 import { LOCALES, getLocale, seconds, setLocale, t, toneLabel } from "./i18n.js";
@@ -18,7 +19,7 @@ function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
     if (key === "text") {
-      node.textContent = value; // innerHTML asla
+      node.textContent = value; // never innerHTML
     } else if (key === "class") {
       node.className = value;
     } else if (key === "dataset") {
@@ -43,7 +44,7 @@ function timecode(ms) {
   return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
 }
 
-/** Fragmentin kaynağına giden bağlantı. Medya fragment'i tam o aralığı açıyor. */
+/** The link to a fragment's source. A media fragment opens exactly that range. */
 function sourceHref(segment) {
   const start = (segment.start_ms / 1000).toFixed(3);
   const end = (segment.end_ms / 1000).toFixed(3);
@@ -59,8 +60,8 @@ function toneBadge(tone, score) {
 export function createUI(root, handlers) {
   const nodes = {};
 
-  // Sabit etiketler: düğüm + katalog anahtarı + hangi özelliğe yazılacağı.
-  // applyLabels() bunları her render'da tazeliyor, dil değişimi bedavaya geliyor.
+  // Static labels: node, catalogue key, and which property to write to.
+  // applyLabels() refreshes them on every render, which makes a locale change free.
   const localized = [];
   function label(node, key, prop = "textContent") {
     localized.push({ node, key, prop });
@@ -70,7 +71,7 @@ export function createUI(root, handlers) {
     for (const item of localized) item.node[item.prop] = t(item.key);
   }
 
-  // --- Üst bant: oturum, kredi, WebMCP durumu, dil ---
+  // --- Top bar: session, credits, WebMCP state, language ---
   nodes.role = el("span", { class: "meta-value", text: "…" });
   nodes.credits = el("span", { class: "meta-value", text: "…" });
   nodes.library = el("span", { class: "meta-value", text: "…" });
@@ -112,8 +113,9 @@ export function createUI(root, handlers) {
     ]),
   ]);
 
-  // --- Arama ---
-  // Yer tutucu çevrilmiyor: demo korpusundaki gerçek replik, dilden bağımsız.
+  // --- Search ---
+  // The placeholder is not translated: it is a real line from the demo corpus, so it is
+  // language-independent.
   nodes.phrase = el("input", {
     type: "text",
     id: "phrase",
@@ -152,7 +154,7 @@ export function createUI(root, handlers) {
 
   nodes.status = el("p", { class: "status", text: "" });
 
-  // Bu panel WebMCP'siz tarayıcıda aynı akışı elle sürmek için var.
+  // This panel exists so the same flow can be driven by hand without WebMCP.
   const searchPanel = el("section", { class: "panel" }, [
     label(el("h2"), "search.heading"),
     label(el("p", { class: "hint" }), "search.hint"),
@@ -160,9 +162,9 @@ export function createUI(root, handlers) {
     nodes.status,
   ]);
 
-  // --- Sayfa içi sohbet ---
-  // Harici ajanın yerine geçmiyor; ajanı olmayan kullanıcı için. Anahtar yoksa
-  // sebebi yazıp panele yönlendiriyor, sessizce kaybolmuyor.
+  // --- In-page assistant ---
+  // Not a replacement for an external agent; for the visitor who has none. Without a key
+  // it states the reason and points at the panel rather than quietly disappearing.
   nodes.chatLog = el("div", { class: "chat-log" });
   nodes.chatInput = label(
     el("input", { type: "text", id: "chat", autocomplete: "off" }),
@@ -199,7 +201,7 @@ export function createUI(root, handlers) {
     chatForm,
   ]);
 
-  // --- Adaylar ---
+  // --- Candidates ---
   nodes.candidates = el("div", { class: "candidates" });
   nodes.candidateCount = el("span", { class: "count", text: "" });
   const candidatePanel = el("section", { class: "panel" }, [
@@ -211,7 +213,7 @@ export function createUI(root, handlers) {
     nodes.candidates,
   ]);
 
-  // --- Sahne ve timeline ---
+  // --- Stage and timeline ---
   nodes.stage = el("div", { class: "stage" });
   nodes.nowPlaying = el("p", { class: "now-playing" });
   nodes.timeline = el("ol", { class: "timeline" });
@@ -277,7 +279,7 @@ export function createUI(root, handlers) {
       const bubble = el("div", { class: `bubble bubble-${message.role}` }, [
         el("p", { class: "bubble-text", text: message.text }),
       ]);
-      // Ajanın hangi araçları çağırdığını göstermek demonun en anlatıcı kısmı
+      // Showing which tools the agent called is the most telling part of a demo
       if (message.toolCalls?.length) {
         bubble.appendChild(
           el(
@@ -379,9 +381,9 @@ export function createUI(root, handlers) {
               onClick: () => handlers.onRemove(index),
             }),
           ]),
-          // Provenance şeridi: her fragment nereden geldiğini taşıyor ve
-          // kaynağına tıklanabiliyor. Bu şerit ürünün "deepfake değil,
-          // kaynaklı montaj" iddiasının somut hali.
+          // The provenance strip: every fragment carries where it came from and links
+          // back to it. This strip is the concrete form of the product's "sourced
+          // assembly, not a deepfake" claim.
           el("div", { class: "provenance" }, [
             el("span", { class: "prov-take", text: segment.take_id }),
             el("span", { class: "dim", text: segment.scene || "-" }),
@@ -436,7 +438,7 @@ export function createUI(root, handlers) {
         el("a", {
           class: "source",
           href: job.downloadUrl,
-          // Aynı origin ve indirme; yeni sekme açmıyoruz
+          // Same origin and a download; we do not open a new tab
           download: "",
           text: t("render.download", {
             format: job.mode === "video" ? "mp4" : "wav",

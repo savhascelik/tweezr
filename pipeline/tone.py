@@ -1,15 +1,15 @@
-"""Ton sınıflandırması — Gemini multimodal.
+"""Delivery classification — Gemini multimodal.
 
-Whisper'ın yapamadığı tek iş: "bu take diğerinden daha sakin". Kelime zaman kodu bir
-hizalama problemi, ton ise prozodi + anlam problemi. İş bölümü bu yüzden.
+The one thing alignment cannot do: "this take is calmer than that one". Word timing is an
+alignment problem; delivery is a prosody and meaning problem. Hence the split.
 
-Take başına TEK çağrı: ses + hizalı satır listesi -> satır başına ton etiketi.
-8-12 take'lik bir korpus 8-12 çağrı demek. Tek yerde debug, öngörülebilir maliyet.
+ONE call per take: audio plus the aligned line list -> a label per line.
+A corpus of 8 to 12 takes means 8 to 12 calls. One place to debug, predictable cost.
 
     $env:GEMINI_API_KEY = "..."
     python -m pipeline.tone scratch\out.json --media scratch\sample.wav
 
-    python -m pipeline.tone scratch\out.json --dry-run    # API anahtarı olmadan, hepsi neutral
+    python -m pipeline.tone scratch\out.json --dry-run    # no API key needed; everything becomes neutral
 """
 
 from __future__ import annotations
@@ -74,10 +74,10 @@ RESPONSE_SCHEMA = {
 
 
 def extract_audio(media: Path) -> Path:
-    """Sesi sıkıştırılmış mono kanala çıkarır.
+    """Extracts the audio as a compressed mono track.
 
-    Hem video hem ses girdisini aynı yoldan geçiriyor ve istek boyutunu küçük tutuyor.
-    Ham WAV'la 3 dakikalık klip birkaç MB, mp3 ile onda biri.
+    Puts video and audio input through the same path and keeps the request small. A three
+    minute clip is several megabytes as raw WAV and a tenth of that as mp3.
     """
     import imageio_ffmpeg
 
@@ -103,16 +103,16 @@ def describe_lines(take: dict) -> str:
 
 
 def classify_take(take: dict, media: Path, model: str = MODEL) -> dict[int, dict]:
-    """Bir take'i Gemini'ye gönderir. line_id -> {tone, tone_score, reason} döner."""
+    """Sends one take to Gemini. Returns line_id -> {tone, tone_score, reason}."""
     from google import genai
     from google.genai import types
 
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "GEMINI_API_KEY (veya GOOGLE_API_KEY) tanımlı değil.\n"
+            "GEMINI_API_KEY (or GOOGLE_API_KEY) is not set.\n"
             "  $env:GEMINI_API_KEY = \"...\"\n"
-            "Anahtarsız denemek için: --dry-run"
+            "To try without a key: --dry-run"
         )
 
     audio = extract_audio(media)
@@ -129,7 +129,7 @@ def classify_take(take: dict, media: Path, model: str = MODEL) -> dict[int, dict
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=RESPONSE_SCHEMA,
-            temperature=0.0,  # etiketler koşular arasında oynamasın
+            temperature=0.0,  # keep labels stable across runs
         ),
     )
 
@@ -140,7 +140,7 @@ def classify_take(take: dict, media: Path, model: str = MODEL) -> dict[int, dict
     for item in payload.get("lines", []):
         tone = item.get("tone", "neutral")
         if tone not in schema.TONES:
-            # Şema enum'u zorluyor ama modele güvenmiyoruz
+            # The schema enforces an enum, but we do not take the model's word for it
             tone = "neutral"
         labels[int(item["line_id"])] = {
             "tone": tone,
@@ -151,7 +151,7 @@ def classify_take(take: dict, media: Path, model: str = MODEL) -> dict[int, dict
 
 
 def apply_tones(doc: dict, media: Path | None, dry_run: bool, model: str = MODEL) -> int:
-    """Dokümandaki satırlara ton yazar. Etiketlenen satır sayısını döner."""
+    """Writes tone onto the document's lines. Returns how many were labelled."""
     labelled = 0
 
     for take in doc["takes"]:
@@ -164,20 +164,20 @@ def apply_tones(doc: dict, media: Path | None, dry_run: bool, model: str = MODEL
             continue
 
         if media is None:
-            raise ValueError("--media gerekiyor (ya da --dry-run)")
+            raise ValueError("--media is required (or use --dry-run)")
 
         labels = classify_take(take, media, model)
 
         missing = [l["line_id"] for l in take["lines"] if l["line_id"] not in labels]
         if missing:
             print(
-                f"  uyarı: {take['take_id']} için {len(missing)} satır etiketlenmedi "
-                f"(line_id {missing}), neutral yazılıyor"
+                f"  warning: {len(missing)} lines in {take['take_id']} were not labelled "
+                f"(line_id {missing}); writing neutral"
             )
 
         for line in take["lines"]:
             label = labels.get(
-                line["line_id"], {"tone": "neutral", "tone_score": 0.0, "reason": "eksik"}
+                line["line_id"], {"tone": "neutral", "tone_score": 0.0, "reason": "missing"}
             )
             line["tone"] = label["tone"]
             line["tone_score"] = label["tone_score"]
@@ -188,14 +188,16 @@ def apply_tones(doc: dict, media: Path | None, dry_run: bool, model: str = MODEL
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Satırlara Gemini ile ton etiketi yazar.")
-    parser.add_argument("doc", type=Path, help="transcribe.py çıktısı")
-    parser.add_argument("--media", type=Path, help="take'in sesi/videosu")
+    parser = argparse.ArgumentParser(
+        description="Labels lines with a delivery tone using Gemini."
+    )
+    parser.add_argument("doc", type=Path, help="transcribe.py output")
+    parser.add_argument("--media", type=Path, help="the take's audio or video")
     parser.add_argument("--model", default=MODEL)
     parser.add_argument(
-        "--dry-run", action="store_true", help="API çağrısı yapmadan hepsini neutral yaz"
+        "--dry-run", action="store_true", help="write neutral everywhere, no API call"
     )
-    parser.add_argument("--out", type=Path, help="varsayılan: girdinin üstüne yaz")
+    parser.add_argument("--out", type=Path, help="default: overwrite the input")
     args = parser.parse_args()
 
     doc = json.loads(args.doc.read_text(encoding="utf-8"))
@@ -203,26 +205,26 @@ def main() -> int:
     try:
         labelled = apply_tones(doc, args.media, args.dry_run, args.model)
     except Exception as error:
-        print(f"Ton geçişi başarısız: {error}", file=sys.stderr)
+        print(f"The tone pass failed: {error}", file=sys.stderr)
         return 1
 
     problems = schema.validate(doc)
     if problems:
-        print("Ton yazıldıktan sonra kontrat bozuldu:", file=sys.stderr)
+        print("The contract broke after writing tones:", file=sys.stderr)
         for problem in problems:
             print(f"  ! {problem}", file=sys.stderr)
         return 1
 
     out = args.out or args.doc
     out.write_text(json.dumps(doc, indent=2, ensure_ascii=False), encoding="utf-8")
-    print(f"{labelled} satır etiketlendi -> {out}")
+    print(f"{labelled} lines labelled -> {out}")
 
-    print("\nEtiketler (gözle doğrula, bu ürünün farklılaştırıcı özelliği):")
+    print("\nLabels (check these yourself; this is the product's differentiator):")
     for take in doc["takes"]:
         for line in take["lines"]:
             reason = line.get("tone_reason", "")
             print(
-                f"  {take['take_id']} satır={line['line_id']} "
+                f"  {take['take_id']} line={line['line_id']} "
                 f"{line['tone']:<8} ({line['tone_score']:.2f})  "
                 f"\"{line['text'][:48]}\"  {reason}"
             )

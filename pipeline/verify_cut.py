@@ -1,16 +1,17 @@
-"""Asıl test: kelime sınırından kesip DİNLEMEK.
+"""The real test: cut on a word boundary and LISTEN.
 
-Sayısal rapor hizalamanın makul olduğunu söyler, ama ürünün kalitesine kulak karar veriyor.
-Kelimenin ortasından kesiyorsak kurgucu ilk oynatmada duyar.
+The numeric report says the alignment is plausible, but only the ear decides whether the
+product is any good. If we slice through the middle of a word, an editor hears it on the
+first playback.
 
-    python -m pipeline.verify_cut scratch\out.json --phrase "I never asked for this"          # nerede geçiyor
-    python -m pipeline.verify_cut scratch\out.json --phrase "..." --media scratch\sample.wav --cut 1  # tek parça
-    python -m pipeline.verify_cut scratch\out.json --phrase "..." --media scratch\sample.wav --splice # hepsi birleşik
+    python -m pipeline.verify_cut scratch\\out.json --phrase "I never asked for this"          # where it occurs
+    python -m pipeline.verify_cut scratch\\out.json --phrase "..." --media scratch\\sample.wav --cut 1  # one piece
+    python -m pipeline.verify_cut scratch\\out.json --phrase "..." --media scratch\\sample.wav --splice # all joined
 
---splice en önemlisi: ürünün gerçekte yaptığı şey bu. Birleşim noktaları temiz mi?
+--splice matters most: it is what the product actually does. Are the joins clean?
 
-Buradaki cümle eşleştirme ClickHouse sorgusunun referans uygulaması: ardışık word_norm
-eşleşmesi + start_ms sırası. SQL tarafı aynı sonucu vermek zorunda.
+The phrase matching here is the reference implementation of the ClickHouse query:
+consecutive word_norm matches in start_ms order. The SQL has to give the same answer.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from . import schema
 
 
 def find_phrase(doc: dict, phrase: str) -> list[dict]:
-    """Cümlenin geçtiği yerleri bulur. Ardışık kelime eşleşmesi, satır içinde."""
+    """Finds where a phrase occurs. Consecutive word matches, within a line."""
     target = schema.normalize_phrase(phrase)
     if not target:
         return []
@@ -61,12 +62,12 @@ def find_phrase(doc: dict, phrase: str) -> list[dict]:
 
 
 def assemble_words(doc: dict, phrase: str) -> tuple[list[dict], list[str]]:
-    """Kütüphanedeki tek tek kelimelerden yeni bir cümle kurar.
+    """Builds a new sentence out of single words from the library.
 
-    Ürünün en zor testi ve en çok iddia ettiği şey: kaynakta yan yana olmayan kelimeleri
-    birleştirmek. Hizalama bozuksa burada duyulur.
+    The product's hardest test and its biggest claim: joining words that were never
+    adjacent in the source. Bad alignment is audible here.
 
-    (seçilen kelimeler, kütüphanede olmayanlar) döner.
+    Returns (chosen words, words missing from the library).
     """
     index: dict[str, list[dict]] = {}
     for take in doc["takes"]:
@@ -91,7 +92,7 @@ def assemble_words(doc: dict, phrase: str) -> tuple[list[dict], list[str]]:
         if not options:
             missing.append(target)
             continue
-        # En yüksek güvenli örneği al
+        # Take the most confident instance
         chosen.append(max(options, key=lambda w: w.get("confidence", 0.0)))
 
     return chosen, missing
@@ -104,7 +105,7 @@ def ffmpeg_exe() -> str:
 
 
 def cut(media: Path, start_ms: int, end_ms: int, out: Path, pad_ms: int = 0) -> None:
-    """Verilen aralığı keser. Yeniden encode ediyor — kesim noktası örnek hassasiyetinde olsun."""
+    """Cuts the given range. Re-encodes, so the cut point is sample accurate."""
     start = max(0, start_ms - pad_ms) / 1000
     duration = (end_ms + pad_ms - max(0, start_ms - pad_ms)) / 1000
 
@@ -118,7 +119,7 @@ def cut(media: Path, start_ms: int, end_ms: int, out: Path, pad_ms: int = 0) -> 
 
 
 def splice(media: Path, spans: list[tuple[int, int]], out: Path, pad_ms: int = 0) -> None:
-    """Parçaları kesip birleştirir. Ürünün gerçekte yaptığı şey."""
+    """Cuts the pieces and joins them. What the product actually does."""
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = Path(tmp)
         parts: list[Path] = []
@@ -142,18 +143,22 @@ def splice(media: Path, spans: list[tuple[int, int]], out: Path, pad_ms: int = 0
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Kelime sınırından kesim doğrulaması.")
-    parser.add_argument("doc", type=Path, help="transcribe.py çıktısı ya da fixture.json")
+    parser = argparse.ArgumentParser(
+        description="Word-boundary cut verification."
+    )
+    parser.add_argument("doc", type=Path, help="transcribe.py output or fixture.json")
     parser.add_argument("--phrase", required=True)
-    parser.add_argument("--media", type=Path, help="kesim için kaynak medya")
-    parser.add_argument("--cut", type=int, metavar="N", help="N numaralı eşleşmeyi kes (1'den)")
-    parser.add_argument("--splice", action="store_true", help="tüm eşleşmeleri birleştir")
+    parser.add_argument("--media", type=Path, help="source media for the cut")
+    parser.add_argument(
+        "--cut", type=int, metavar="N", help="cut match number N (1-based)"
+    )
+    parser.add_argument("--splice", action="store_true", help="join every match")
     parser.add_argument(
         "--assemble",
         action="store_true",
-        help="cümleyi tek tek kelimelerden kur (kelime cımbızlama testi)",
+        help="build the phrase out of single words (the assembly test)",
     )
-    parser.add_argument("--pad-ms", type=int, default=0, help="kenarlara pay ekle")
+    parser.add_argument("--pad-ms", type=int, default=0, help="pad the edges")
     parser.add_argument("--out", type=Path, default=Path("cut.wav"))
     args = parser.parse_args()
 
@@ -162,26 +167,26 @@ def main() -> int:
     if args.assemble:
         chosen, missing = assemble_words(doc, args.phrase)
         if missing:
-            print(f"Kütüphanede olmayan kelimeler: {', '.join(missing)}")
+            print(f"Words not in the library: {', '.join(missing)}")
         if not chosen:
             return 1
 
-        print(f'"{args.phrase}" -> {len(chosen)} kelime toplandı\n')
+        print(f'"{args.phrase}" -> collected {len(chosen)} words\n')
         total = 0
         for index, word in enumerate(chosen, start=1):
             duration = word["end_ms"] - word["start_ms"]
             total += duration
             print(
                 f"  {index}. {word['norm']:<10} {word['take_id']} "
-                f"satır={word['line_id']} [{word['start_ms']}-{word['end_ms']} ms, "
-                f"{duration} ms] güven={word.get('confidence', 0):.2f}"
+                f"line={word['line_id']} [{word['start_ms']}-{word['end_ms']} ms, "
+                f"{duration} ms] conf={word.get('confidence', 0):.2f}"
             )
-        print(f"\n  toplam süre: {total} ms")
+        print(f"\n  total duration: {total} ms")
 
         if not args.media:
             return 0
         if not args.media.exists():
-            print(f"\nMedya bulunamadı: {args.media}", file=sys.stderr)
+            print(f"\nMedia not found: {args.media}", file=sys.stderr)
             return 1
 
         splice(
@@ -190,15 +195,15 @@ def main() -> int:
             args.out,
             args.pad_ms,
         )
-        print(f"\nKelimeler birleştirildi -> {args.out}")
-        print("ŞİMDİ DİNLE: kelimeler tam mı, başları/sonları kırpılmış mı?")
+        print(f"\nWords joined -> {args.out}")
+        print("LISTEN NOW: are the words whole, or clipped at either end?")
         return 0
 
     matches = find_phrase(doc, args.phrase)
 
     if not matches:
-        print(f'"{args.phrase}" bulunamadı.')
-        print("\nKütüphanedeki kelimeler:")
+        print(f'"{args.phrase}" not found.')
+        print("\nWords in the library:")
         seen = {
             schema.normalize_word(w["word"])
             for take in doc["takes"]
@@ -208,13 +213,13 @@ def main() -> int:
         print("  " + " ".join(sorted(seen)))
         return 1
 
-    print(f'"{args.phrase}" -> {len(matches)} eşleşme\n')
+    print(f'"{args.phrase}" -> {len(matches)} matches\n')
     for index, match in enumerate(matches, start=1):
         duration = match["end_ms"] - match["start_ms"]
         tone = match["tone"] or "?"
         print(
-            f"  {index}. {match['take_id']} kam={match['camera'] or '-'} "
-            f"satır={match['line_id']} ton={tone} "
+            f"  {index}. {match['take_id']} cam={match['camera'] or '-'} "
+            f"line={match['line_id']} tone={tone} "
             f"[{match['start_ms']} - {match['end_ms']} ms, {duration} ms]"
         )
         print("     " + "  ".join(
@@ -225,25 +230,25 @@ def main() -> int:
         return 0
 
     if not args.media:
-        print("\n--cut / --splice için --media gerekiyor.", file=sys.stderr)
+        print("\n--cut / --splice need --media.", file=sys.stderr)
         return 1
     if not args.media.exists():
-        print(f"\nMedya bulunamadı: {args.media}", file=sys.stderr)
+        print(f"\nMedia not found: {args.media}", file=sys.stderr)
         return 1
 
     if args.splice:
         spans = [(m["start_ms"], m["end_ms"]) for m in matches]
         splice(args.media, spans, args.out, args.pad_ms)
-        print(f"\n{len(spans)} parça birleştirildi -> {args.out}")
-        print("ŞİMDİ DİNLE: birleşim noktaları temiz mi, kelime kırpılmış mı?")
+        print(f"\n{len(spans)} pieces joined -> {args.out}")
+        print("LISTEN NOW: are the joins clean, is any word clipped?")
     else:
         if not 1 <= args.cut <= len(matches):
-            print(f"\n--cut 1..{len(matches)} arasında olmalı.", file=sys.stderr)
+            print(f"\n--cut must be between 1 and {len(matches)}.", file=sys.stderr)
             return 1
         match = matches[args.cut - 1]
         cut(args.media, match["start_ms"], match["end_ms"], args.out, args.pad_ms)
-        print(f"\n{match['take_id']} eşleşme {args.cut} -> {args.out}")
-        print("ŞİMDİ DİNLE: baştan ve sondan kelime kırpılmış mı?")
+        print(f"\n{match['take_id']} match {args.cut} -> {args.out}")
+        print("LISTEN NOW: is a word clipped at the start or the end?")
 
     return 0
 

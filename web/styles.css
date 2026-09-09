@@ -1,5 +1,5 @@
-/* Kurgu odası paleti: koyu, düşük doygunluk, tek vurgu rengi.
-   Amaç dikkat çekmek değil, saatlerce bakılabilmek. */
+/* Edit-room palette: dark, low saturation, one accent colour.
+   The aim is not to catch the eye but to be looked at for hours. */
 
 :root {
   --bg: #14161a;
@@ -33,7 +33,7 @@ select {
   color: inherit;
 }
 
-/* --- Üst bant --- */
+/* --- Top bar --- */
 
 .bar {
   display: flex;
@@ -94,8 +94,8 @@ select {
   color: var(--dim);
 }
 
-/* Dil seçici. Üst bantta, küçük ve dikkat çekmeyen: jüri İngilizceyi hazır
-   buluyor, ihtiyaç duyan Türkçeye geçiyor. */
+/* Language picker. Small and unobtrusive in the top bar: a judge finds English already
+   selected, and whoever needs Turkish switches. */
 .locale {
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -109,7 +109,7 @@ select {
   color: var(--text);
 }
 
-/* --- Yerleşim --- */
+/* --- Layout --- */
 
 .layout {
   display: grid;
@@ -159,7 +159,7 @@ select {
   margin: 0 0 0.7rem;
 }
 
-/* --- Arama --- */
+/* --- Search --- */
 
 .search {
   display: grid;
@@ -256,7 +256,7 @@ button.ghost:hover {
   color: var(--accent);
 }
 
-/* --- Adaylar --- */
+/* --- Candidates --- */
 
 .candidates {
   display: flex;
@@ -311,7 +311,7 @@ button.ghost:hover {
   margin: 0;
 }
 
-/* --- Ton etiketleri: renk değil, düşük doygunluklu ayrım --- */
+/* --- Delivery badges: distinction through low saturation rather than colour --- */
 
 .tone {
   padding: 0.1rem 0.45rem;
@@ -337,7 +337,7 @@ button.ghost:hover {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
 }
 
-/* --- Sahne --- */
+/* --- Stage --- */
 
 .stage {
   position: relative;
@@ -359,7 +359,7 @@ button.ghost:hover {
   pointer-events: none;
 }
 
-/* Çift tampon: iki element dönüşümlü çalışıyor, sadece aktif olan görünüyor. */
+/* Double buffering: two elements alternate and only the active one is visible. */
 .stage-media.is-active {
   opacity: 1;
 }
@@ -395,8 +395,8 @@ button.ghost:hover {
   background: color-mix(in srgb, var(--accent) 7%, var(--panel-2));
 }
 
-/* Provenance şeridi: her fragment nereden geldiğini taşıyor.
-   Ürünün "deepfake değil, kaynaklı montaj" iddiasının görünür hali. */
+/* The provenance strip: every fragment carries where it came from.
+   The visible form of the product's "sourced assembly, not a deepfake" claim. */
 .provenance {
   display: flex;
   flex-wrap: wrap;
@@ -435,7 +435,7 @@ button.ghost:hover {
   gap: 0.5rem;
 }
 
-/* --- Sayfa içi asistan --- */
+/* --- In-page assistant --- */
 
 .chat-log {
   display: flex;
@@ -476,8 +476,8 @@ button.ghost:hover {
   white-space: pre-wrap;
 }
 
-/* Ajanın hangi araçları çağırdığı. Demoda en anlatıcı kısım: kararın
-   nasıl verildiği görünür oluyor. */
+/* Which tools the agent called. The most telling part of a demo: how the decision
+   was reached becomes visible. */
 .tool-trace {
   display: flex;
   flex-wrap: wrap;

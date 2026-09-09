@@ -1,12 +1,12 @@
-"""ClickHouse sorgularının doğruluk testleri.
+"""Correctness tests for the ClickHouse queries.
 
-Cümle araması ürünün kalbi. Sessizce yanlış sonuç döndürmesi en pahalı hata olur,
-o yüzden her senaryo hem SQL'de hem yerel referans uygulamada koşuluyor ve
-sonuçlar karşılaştırılıyor.
+Phrase search is the heart of the product, and returning the wrong answer quietly is the
+most expensive failure it can have. So every scenario runs through both the SQL and the
+local reference implementation, and the results are compared.
 
     python -m pipeline.test_queries
 
-Yerel ClickHouse gerekiyor:
+Needs a local ClickHouse:
     docker compose -f dev/docker-compose.yml up -d
 """
 
@@ -29,7 +29,7 @@ def word(text: str, start_ms: int, duration: int = 200) -> dict:
 
 
 def build_doc() -> dict:
-    """Kenar durumları kasten içeren test korpusu."""
+    """A test corpus built to contain the edge cases on purpose."""
     return {
         "project_id": TEST_PROJECT,
         "takes": [
@@ -40,7 +40,7 @@ def build_doc() -> dict:
                 "speaker": "MAYA",
                 "source_url": "gs://t/T01.mp4",
                 "lines": [
-                    # Aynı satırda cümle İKİ kere: arrayFilter çoklu eşleşme yolu
+                    # The phrase TWICE in one line: the arrayFilter multi-match path
                     {
                         "line_id": 1,
                         "text": "go now go now",
@@ -51,7 +51,7 @@ def build_doc() -> dict:
                             word("go", 500), word("now", 750),
                         ],
                     },
-                    # Noktalama ve büyük harf: normalizasyon
+                    # Punctuation and capitals: normalisation
                     {
                         "line_id": 2,
                         "text": "Go, now!",
@@ -68,7 +68,7 @@ def build_doc() -> dict:
                 "speaker": "MAYA",
                 "source_url": "gs://t/T02.mp4",
                 "lines": [
-                    # Kelimeler var ama SIRA yanlış: eşleşme OLMAMALI
+                    # The words are present but in the wrong ORDER: must NOT match
                     {
                         "line_id": 1,
                         "text": "now go",
@@ -84,10 +84,10 @@ def build_doc() -> dict:
 
 def check(name: str, actual, expected) -> bool:
     ok = actual == expected
-    print(f"  {'GEÇTİ' if ok else 'BAŞARISIZ':<10} {name}")
+    print(f"  {'PASS' if ok else 'FAIL':<10} {name}")
     if not ok:
-        print(f"             beklenen: {expected}")
-        print(f"             gelen   : {actual}")
+        print(f"             expected: {expected}")
+        print(f"             actual  : {actual}")
     return ok
 
 
@@ -102,16 +102,16 @@ def main() -> int:
 
     problems = schema.validate(doc)
     if problems:
-        print("Test korpusu kontrata uymuyor:")
+        print("The test corpus does not match the contract:")
         for problem in problems:
             print(f"  ! {problem}")
         return 1
 
-    print(f"Bağlanıyor: {db.describe()}")
+    print(f"Connecting: {db.describe()}")
     try:
         client = db.connect()
     except Exception as error:
-        print(f"ClickHouse'a bağlanamadı: {error}", file=sys.stderr)
+        print(f"Could not connect to ClickHouse: {error}", file=sys.stderr)
         print("  docker compose -f dev/docker-compose.yml up -d", file=sys.stderr)
         return 1
 
@@ -120,65 +120,65 @@ def main() -> int:
     client.insert("words", schema.flatten_rows(doc), column_names=schema.COLUMNS)
 
     results: list[bool] = []
-    print("\n=== cümle araması ===")
+    print("\n=== phrase search ===")
 
-    # Aynı satırda iki geçiş + ikinci satırda bir geçiş = 3
+    # Two occurrences in one line plus one in the second line = 3
     sql = search.phrase_search(client, TEST_PROJECT, "go now")
-    results.append(check("'go now' -> 3 eşleşme", len(sql), 3))
+    results.append(check("'go now' -> 3 matches", len(sql), 3))
     results.append(
         check(
-            "aynı satırda iki geçiş bulundu",
+            "both occurrences in one line found",
             keys([m for m in sql if m["line_id"] == 1]),
             [("T01", 1, 0, 450), ("T01", 1, 500, 950)],
         )
     )
 
-    # Ters sıra eşleşmemeli
+    # Reversed order must not match
     results.append(
-        check("T02 (ters sıra) eşleşmedi", [m for m in sql if m["take_id"] == "T02"], [])
+        check("T02 (reversed order) did not match", [m for m in sql if m["take_id"] == "T02"], [])
     )
 
-    # Noktalama ve büyük harf normalizasyonu
+    # Punctuation and capital normalisation
     results.append(
         check(
-            "noktalamalı satır eşleşti",
+            "line with punctuation matched",
             keys([m for m in sql if m["line_id"] == 2]),
             [("T01", 2, 2000, 2450)],
         )
     )
 
-    # SQL ile yerel referans aynı cevabı vermeli
+    # The SQL and the local reference have to agree
     reference = verify_cut.find_phrase(doc, "go now")
-    results.append(check("SQL == yerel referans", keys(sql), keys(reference)))
+    results.append(check("SQL == local reference", keys(sql), keys(reference)))
 
-    print("\n=== ton filtresi ===")
+    print("\n=== tone filter ===")
     calm = search.phrase_search(client, TEST_PROJECT, "go now", tone="calm")
-    results.append(check("ton=calm -> 1 eşleşme", keys(calm), [("T01", 2, 2000, 2450)]))
+    results.append(check("tone=calm -> 1 match", keys(calm), [("T01", 2, 2000, 2450)]))
     tense = search.phrase_search(client, TEST_PROJECT, "go now", tone="tense")
-    results.append(check("ton=tense -> 2 eşleşme", len(tense), 2))
+    results.append(check("tone=tense -> 2 matches", len(tense), 2))
     results.append(
-        check("ton=angry -> 0 eşleşme", search.phrase_search(
+        check("tone=angry -> 0 matches", search.phrase_search(
             client, TEST_PROJECT, "go now", tone="angry"), [])
     )
 
-    print("\n=== bulunamayan ===")
+    print("\n=== no match ===")
     results.append(
-        check("olmayan kelime", search.phrase_search(client, TEST_PROJECT, "helicopter"), [])
+        check("word not present", search.phrase_search(client, TEST_PROJECT, "helicopter"), [])
     )
     results.append(
         check(
-            "kütüphaneden uzun cümle",
+            "phrase longer than the library",
             search.phrase_search(client, TEST_PROJECT, "go now go now go now"),
             [],
         )
     )
 
-    print("\n=== kelime araması ===")
+    print("\n=== word search ===")
     occurrences = search.word_search(client, TEST_PROJECT, "GO,")
-    results.append(check("'GO,' normalize edilip 4 geçiş buldu", len(occurrences), 4))
+    results.append(check("'GO,' normalised and found 4 occurrences", len(occurrences), 4))
     results.append(
         check(
-            "kelime + ton filtresi",
+            "word plus tone filter",
             len(search.word_search(client, TEST_PROJECT, "go", tone="whisper")),
             1,
         )
@@ -187,7 +187,7 @@ def main() -> int:
     client.command(queries.DROP_PROJECT, parameters={"project": TEST_PROJECT})
 
     passed = sum(results)
-    print(f"\n{passed}/{len(results)} test geçti")
+    print(f"\n{passed}/{len(results)} tests passed")
     return 0 if passed == len(results) else 1
 
 

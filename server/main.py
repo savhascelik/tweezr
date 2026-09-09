@@ -1,20 +1,22 @@
-"""FastAPI uygulaması. Tek origin: API, medya ve sayfa aynı sunucudan.
+"""The FastAPI application. One origin: API, media and page from the same server.
 
-Tek origin tesadüf değil, WebMCP'nin gereği:
+That is not incidental, it is what WebMCP requires:
 
-  1. Araçlar secure context istiyor.
-  2. Origin-Agent-Cluster: ?1 header'ı ŞART. Yoksa registerTool SecurityError ile
-     reddediyor ve hiçbir ipucu vermiyor. Geçen projede bunu deploy'da öğrendik.
-  3. Session cookie'si ile API aynı origin'de olunca ajanın devraldığı oturum
-     bağlamı doğrudan çalışıyor, ayrı token akışı gerekmiyor.
+  1. Tools need a secure context.
+  2. The Origin-Agent-Cluster: ?1 header is mandatory. Without it registerTool rejects
+     with a SecurityError and offers no hint as to why. We learned that during a deploy
+     on the previous project.
+  3. With the session cookie on the same origin as the API, the session context the
+     agent inherits just works, and no separate token flow is needed.
 
-CORS yok ve olmayacak: aynı origin'de gerek yok, açmak sadece saldırı yüzeyi ekler.
+There is no CORS and there will not be: unnecessary on one origin, and enabling it would
+only add attack surface.
 
-GÜVENLİK NOTU — bu API kasten kimlik doğrulamasız:
-Zorunlu giriş WebMCP keşfini öldürüyor (bkz. sessions.py). Karşılığında konan frenler:
-anonim oturum başına kredi, IP başına oturum limiti, proje allowlist'i, parametreli
-sorgular (string interpolasyon yok) ve sadece okuma yapan uçlar. Yazma yapan tek uç
-render ve o da kredi düşürüyor.
+SECURITY NOTE — this API is deliberately unauthenticated.
+A mandatory login kills WebMCP discovery, see sessions.py. The brakes that pay for it:
+credits per anonymous session, a per-IP session cap, a project allowlist, parameterised
+queries with no string interpolation, and read-only endpoints everywhere. The only
+endpoint that writes is render, and that one spends credit.
 """
 
 from __future__ import annotations
@@ -37,7 +39,7 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def security_headers(request, call_next):
         response = await call_next(request)
-        # WebMCP'nin çalışması için zorunlu. Eksikse registerTool sessizce reddediyor.
+        # Mandatory for WebMCP. Without it registerTool refuses without saying why.
         response.headers["Origin-Agent-Cluster"] = "?1"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
@@ -49,7 +51,7 @@ def create_app() -> FastAPI:
 
     app.include_router(routes.router)
 
-    # Medya. StaticFiles HTTP range destekliyor; sanal kırpma oynatıcısı buna dayanıyor.
+    # Media. StaticFiles supports HTTP range, which the virtual-splice player depends on.
     config.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
     app.mount(
         "/media",
@@ -57,7 +59,7 @@ def create_app() -> FastAPI:
         name="media",
     )
 
-    # Frontend build çıktısı. Henüz yoksa mount etmiyoruz — API tek başına çalışsın.
+    # The frontend. If it is absent we do not mount, so the API still works alone.
     if config.STATIC_DIR.is_dir():
         app.mount(
             "/",

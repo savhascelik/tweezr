@@ -1,28 +1,28 @@
-# Sanal ortam ve derleme artıkları
+# Virtualenv and build leftovers
 .venv/
 __pycache__/
 *.pyc
 
-# Geliştirme çöpü. demo/ BURADA DEĞİL: o içerik ve imajda bulunmak zorunda.
+# Development scratch. demo/ is NOT here: that is content and has to be in the image.
 scratch/
 
-# Kimlik bilgileri asla imaja girmez. Ortam değişkenleriyle veriliyorlar.
+# Credentials never enter the image. They arrive as environment variables.
 .env
 .env.*
 
-# Git ve editör
+# Git and editor
 .git/
 .gitignore
 .vscode/
 .idea/
 
-# Yerel geliştirme ClickHouse'u üretimde kullanılmıyor
+# The local development ClickHouse is not used in production
 dev/docker-compose.yml
 dev/clickhouse-listen.xml
 
-# Transkripsiyon yığını sunucuda çalışmıyor
+# The transcription stack does not run on the server
 requirements-ingest.txt
 
-# Testler imaja gerekmiyor
+# Tests are not needed in the image
 **/test_*.py
 **/test_*.mjs

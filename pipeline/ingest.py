@@ -1,10 +1,10 @@
-"""Ingest dokümanı -> ClickHouse `words` tablosu.
+"""Ingest document -> the ClickHouse `words` table.
 
-    python -m pipeline.ingest scratch\out.json
-    python -m pipeline.ingest pipeline\fixture.json --replace
+    python -m pipeline.ingest scratch\\out.json
+    python -m pipeline.ingest pipeline\\fixture.json --replace
 
---replace aynı project_id'yi önce siliyor. Tekrar tekrar ingest edip aynı sonucu
-almak istiyorsun, yoksa satırlar birikiyor ve arama iki kat sonuç veriyor.
+--replace deletes the same project_id first. You want ingesting twice to give the same
+result; without it rows accumulate and search starts returning every match twice.
 """
 
 from __future__ import annotations
@@ -18,11 +18,11 @@ from . import db, queries, schema
 
 
 def ingest(client, doc: dict, replace: bool = False) -> int:
-    """Dokümanı yazar, yazılan satır sayısını döner."""
+    """Writes the document and returns how many rows were written."""
     problems = schema.validate(doc)
     if problems:
         raise ValueError(
-            "Doküman kontrata uymuyor, ingest yapılmadı:\n  "
+            "The document does not match the contract, nothing was ingested:\n  "
             + "\n  ".join(problems)
         )
 
@@ -40,22 +40,24 @@ def ingest(client, doc: dict, replace: bool = False) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Ingest dokümanını ClickHouse'a yazar.")
-    parser.add_argument("docs", type=Path, nargs="+", help="bir veya daha fazla JSON")
+    parser = argparse.ArgumentParser(
+        description="Writes an ingest document into ClickHouse."
+    )
+    parser.add_argument("docs", type=Path, nargs="+", help="one or more JSON documents")
     parser.add_argument(
         "--replace",
         action="store_true",
-        help="aynı project_id'nin mevcut satırlarını önce sil",
+        help="delete this project_id's existing rows first",
     )
     args = parser.parse_args()
 
-    print(f"Bağlanıyor: {db.describe()}")
+    print(f"Connecting: {db.describe()}")
     try:
         client = db.connect()
-    except Exception as error:  # bağlantı hatası kullanıcıya net dönsün
-        print(f"\nClickHouse'a bağlanamadı: {error}", file=sys.stderr)
+    except Exception as error:  # a connection failure should be legible
+        print(f"\nCould not connect to ClickHouse: {error}", file=sys.stderr)
         print(
-            "\nYerel geliştirme için:\n"
+            "\nFor local development:\n"
             "  docker run -d --name ch-dev -p 18123:8123 "
             "-e CLICKHOUSE_PASSWORD=dev -e CLICKHOUSE_DB=cinema "
             "clickhouse/clickhouse-server:25.3",
@@ -70,16 +72,16 @@ def main() -> int:
     for path in args.docs:
         doc = json.loads(path.read_text(encoding="utf-8"))
         written = ingest(client, doc, replace=replace)
-        replace = False  # sadece ilk dokümanda sil, sonrakiler ekliyor
+        replace = False  # only the first document replaces; the rest append
         total += written
         takes = ", ".join(t["take_id"] for t in doc["takes"])
-        print(f"  {path.name:<24} {written:>6} satır  [{takes}]")
+        print(f"  {path.name:<24} {written:>6} rows  [{takes}]")
 
-    print(f"\nToplam {total} satır yazıldı.")
+    print(f"\n{total} rows written in total.")
 
     project = json.loads(args.docs[0].read_text(encoding="utf-8"))["project_id"]
     stats = client.query(queries.LIBRARY_STATS, parameters={"project": project})
-    print(f"\nKütüphane ({project}):")
+    print(f"\nLibrary ({project}):")
     for name, value in zip(stats.column_names, stats.result_rows[0]):
         print(f"  {name:22} {value}")
 

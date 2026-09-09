@@ -1,23 +1,22 @@
 /**
- * Sanal kırpma oynatıcısı. Dosya üretmiyor — sadece arıyor ve oynatıyor.
+ * The virtual-splice player. It produces no file — it only seeks and plays.
  *
- * Ürünün "render etmeden gör" iddiası burada gerçekleşiyor: bir kaba kurguyu
- * duymak için hiçbir şey encode edilmiyor, kaynak dosyalarda ileri geri
- * atlanıyor. Bu yüzden öneri anında oynatılabilir ve kredi harcamıyor.
+ * The product's "see it without rendering" claim happens here: hearing a rough cut
+ * encodes nothing, it jumps back and forth inside the source files. Which is why a
+ * proposal is playable immediately and costs no credit.
  *
- * İki tasarım kararı bunu kullanılabilir kılıyor:
+ * Two design decisions make it usable:
  *
- * 1. `timeupdate` DEĞİL, requestAnimationFrame. timeupdate saniyede ~4 kez
- *    tetikleniyor, yani kesim noktasını 250 ms'e kadar kaçırabilir. Biz kelime
- *    sınırından kesiyoruz; 250 ms sonraki kelimeyi de duyurur. rAF ~16 ms veriyor.
+ * 1. requestAnimationFrame, NOT `timeupdate`. timeupdate fires about four times a
+ *    second, so it can overshoot a cut point by up to 250ms. We cut on word
+ *    boundaries, and 250ms means you also hear the next word. rAF gives about 16ms.
  *
- * 2. Çift tampon. Tek element kullanıp segment başına src/currentTime değiştirmek
- *    her geçişte yükleme boşluğu bırakıyor. İki element dönüşümlü çalışıyor:
- *    biri çalarken diğeri sıradaki segmente konumlanıyor, geçiş anında sadece
- *    play() çağrılıyor.
+ * 2. Double buffering. One element changing src/currentTime per segment leaves a
+ *    loading gap at every transition. Two elements alternate: while one plays, the
+ *    other is positioned on the next segment, so the transition is just a play() call.
  *
- * Medya sunucusunun HTTP range desteklemesi şart (StaticFiles destekliyor),
- * yoksa her arama dosyanın tamamını indirir.
+ * The media server must support HTTP range, which StaticFiles does; without it every
+ * seek would download the whole file.
  */
 
 const SEEK_TOLERANCE_S = 0.005;
@@ -36,11 +35,11 @@ function waitFor(element, eventName, timeoutMs = LOAD_TIMEOUT_MS) {
     };
     const onError = () => {
       cleanup();
-      reject(new Error(`Medya yüklenemedi: ${element.currentSrc || element.src}`));
+      reject(new Error(`Could not load media: ${element.currentSrc || element.src}`));
     };
     const timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`Medya zaman aşımına uğradı: ${element.src}`));
+      reject(new Error(`Media timed out: ${element.src}`));
     }, timeoutMs);
 
     element.addEventListener(eventName, onEvent, { once: true });
@@ -65,7 +64,7 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
   let segments = [];
   let cursor = -1;
   let frame = null;
-  let generation = 0; // eski async prepare'lerin yeni oynatmayı bozmasını engelliyor
+  let generation = 0; // stops a stale async prepare from disturbing a new playback
 
   const active = () => elements[activeIndex];
   const standby = () => elements[1 - activeIndex];
@@ -82,7 +81,7 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
 
     if (Math.abs(element.currentTime - target) > SEEK_TOLERANCE_S) {
       element.currentTime = target;
-      // Hedefe zaten oturmuşsa 'seeked' tetiklenmeyebilir, yukarıdaki kontrol o yüzden
+      // 'seeked' may not fire if we are already on target, hence the check above
       await waitFor(element, "seeked");
     }
   }
@@ -131,13 +130,13 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
       return;
     }
 
-    // Sıradaki element zaten konumlandırılmış olmalı; geçiş sadece play()
+    // The next element should already be positioned; the transition is just play()
     activeIndex = 1 - activeIndex;
     showActive();
 
     const segment = segments[cursor];
     try {
-      // Ön yükleme yetişmediyse burada bekliyoruz — boşluk olur ama atlama olmaz
+      // If preloading did not keep up we wait here: a gap, but never a skip
       await prepare(active(), segment);
       if (myGeneration !== generation) return;
       await active().play();
@@ -148,7 +147,7 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
 
     onSegmentChange?.({ index: cursor, segment });
     prepare(standby(), segments[cursor + 1]).catch(() => {
-      // Ön yükleme hatası ölümcül değil; sıra gelince tekrar denenecek
+      // A preload failure is not fatal; it will be retried when its turn comes
     });
     frame = requestAnimationFrame(() => tick(myGeneration));
   }
@@ -178,7 +177,7 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
     frame = requestAnimationFrame(() => tick(myGeneration));
   }
 
-  /** Tek segmenti önizler. preview_segment aracının arkası. */
+  /** Previews one segment. What sits behind the preview_segment tool. */
   function preview(segment) {
     return play([segment]);
   }

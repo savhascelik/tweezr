@@ -1,12 +1,13 @@
-"""Medya -> kelime bazlı zaman kodu. CPU'da çalışır.
+"""Media -> word-level timecodes. Runs on CPU.
 
-Çıktı fixture.json ile AYNI şekilde. Ton alanı boş bırakılıyor; onu Gemini geçişi dolduruyor.
+The output has the SAME shape as fixture.json. The tone field is left empty; the Gemini
+pass fills it.
 
-    python -m pipeline.transcribe scratch\sample.wav --take-id S01_T01 --speaker MAYA --out scratch\out.json
+    python -m pipeline.transcribe scratch\\sample.wav --take-id S01_T01 --speaker MAYA --out scratch\\out.json
 
-Neden faster-whisper: bu bir hizalama işi, generative iş değil. Düz Whisper zaman kodlarını
-cümle seviyesinde verir ve saniyelerce sapabilir; kelime seviyesi word_timestamps ile geliyor.
-GPU sadece hız için — 3 dakika altı kliplerde CPU yetiyor.
+Why faster-whisper: this is alignment work, not generative work. Plain Whisper reports
+timestamps at utterance level and can be off by seconds; word level arrives through
+word_timestamps. GPU is only for speed — CPU is enough for clips under three minutes.
 """
 
 from __future__ import annotations
@@ -32,11 +33,11 @@ def transcribe(
     model_size: str = "base.en",
     language: str | None = "en",
 ) -> tuple[dict, dict]:
-    """Tek medya dosyasını ingest dokümanına çevirir. (doc, stats) döner."""
+    """Turns one media file into an ingest document. Returns (doc, stats)."""
     from faster_whisper import WhisperModel
 
     load_started = time.perf_counter()
-    # int8 CPU'da belirgin hızlanma sağlıyor, bu ölçekte doğruluk kaybı fark edilmiyor.
+    # int8 is a clear speedup on CPU and the accuracy cost is not noticeable at this scale.
     model = WhisperModel(model_size, device="cpu", compute_type="int8")
     load_seconds = time.perf_counter() - load_started
 
@@ -44,8 +45,8 @@ def transcribe(
     segments, info = model.transcribe(
         str(media),
         language=language,
-        word_timestamps=True,   # kelime bazlı zaman kodunun geldiği yer
-        vad_filter=True,        # sessizlikleri atar, zaman kodu kaymasını azaltır
+        word_timestamps=True,   # where the word-level timing comes from
+        vad_filter=True,        # drops silence, which reduces timestamp drift
         beam_size=5,
     )
 
@@ -55,7 +56,7 @@ def transcribe(
     for index, segment in enumerate(segments, start=1):
         words = []
         for word in segment.words or []:
-            text = word.word.strip()  # faster-whisper kelimeyi baştaki boşlukla veriyor
+            text = word.word.strip()  # faster-whisper returns a leading space on words
             if not text:
                 continue
             words.append(
@@ -75,7 +76,7 @@ def transcribe(
             {
                 "line_id": index,
                 "text": segment.text.strip(),
-                "tone": None,        # Gemini geçişi dolduracak
+                "tone": None,        # the Gemini pass fills this
                 "tone_score": 0.0,
                 "words": words,
             }
@@ -102,7 +103,7 @@ def transcribe(
         "media_seconds": round(info.duration, 2),
         "model_load_seconds": round(load_seconds, 2),
         "transcribe_seconds": round(run_seconds, 2),
-        # 1.0'ın altı gerçek zamandan hızlı demek
+        # Below 1.0 means faster than realtime
         "realtime_factor": round(run_seconds / info.duration, 2) if info.duration else None,
         "lines": len(lines),
         "empty_segments": empty_segments,
@@ -112,7 +113,9 @@ def transcribe(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Medyayı kelime bazlı zaman koduna çevirir.")
+    parser = argparse.ArgumentParser(
+        description="Turns media into word-level timecodes."
+    )
     parser.add_argument("media", type=Path)
     parser.add_argument("--take-id", required=True)
     parser.add_argument("--project-id", default="demo")
@@ -126,7 +129,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.media.exists():
-        print(f"Medya bulunamadı: {args.media}", file=sys.stderr)
+        print(f"Media not found: {args.media}", file=sys.stderr)
         return 1
 
     doc, stats = transcribe(
@@ -147,19 +150,19 @@ def main() -> int:
     for key, value in stats.items():
         print(f"  {key:22} {value}")
 
-    print("\n=== hizalama raporu ===")
+    print("\n=== alignment report ===")
     for key, value in schema.alignment_report(doc).items():
         print(f"  {key:22} {value}")
 
     problems = schema.validate(doc)
     if problems:
-        print(f"\n=== {len(problems)} uyarı ===")
+        print(f"\n=== {len(problems)} warnings ===")
         for problem in problems:
             print(f"  ! {problem}")
     else:
-        print("\nKontrat doğrulaması temiz.")
+        print("\nContract validation clean.")
 
-    print("\nTranskript:")
+    print("\nTranscript:")
     for take in doc["takes"]:
         for line in take["lines"]:
             first = line["words"][0]["start_ms"]

@@ -1,20 +1,22 @@
 /**
- * Onay penceresi testleri.
+ * Approval dialog tests.
  *
  *   node web/test_approve.mjs
  *
- * jsdom yok. approve.js'in DOM'dan istediği yüzey küçük olduğu için burada minimal
- * bir sahte DOM var. Test edilen şeyler kozmetik değil, güvenlik davranışları:
- * shadow root'un closed açılması, metnin textContent ile yazılması, varsayılan odağın
- * Vazgeç'te olması, zaman aşımının ONAY DEĞİL red yönünde çözülmesi.
+ * No jsdom. The DOM surface approve.js needs is small, so there is a minimal fake
+ * DOM below instead. What gets asserted here is not cosmetics but security
+ * behaviour: the shadow root opening closed, text written through textContent,
+ * default focus sitting on Cancel, and the timeout resolving to declined rather
+ * than approved.
  */
 
 import { confirmRender } from "./src/approve.js";
 import { setLocale } from "./src/i18n.js";
 
-// Dili sabitliyoruz. Node `navigator.language`'ı işletim sisteminden okuyor, yani
-// bu testler makinenin diline göre farklı sonuç verirdi — ilk koşuda tam bunu
-// yaptılar ve Türkçe düğme metni geldi. Tespit ayrıca aşağıda test ediliyor.
+// Pin the language. Node reads `navigator.language` from the operating system, so
+// these tests would produce different results depending on the machine locale --
+// on the first run they did exactly that and came back with Turkish button text.
+// The detection itself is covered separately at the bottom of this file.
 setLocale("en");
 
 const results = [];
@@ -22,20 +24,20 @@ const results = [];
 function check(name, actual, expected) {
   const ok = JSON.stringify(actual) === JSON.stringify(expected);
   results.push(ok);
-  console.log(`  ${ok ? "GEÇTİ" : "BAŞARISIZ"}      ${name}`);
+  console.log(`  ${ok ? "PASS" : "FAIL"}      ${name}`);
   if (!ok) {
-    console.log(`               beklenen: ${JSON.stringify(expected)}`);
-    console.log(`               gelen   : ${JSON.stringify(actual)}`);
+    console.log(`               expected: ${JSON.stringify(expected)}`);
+    console.log(`               actual  : ${JSON.stringify(actual)}`);
   }
 }
 
 function checkThat(name, condition, detail = "") {
   results.push(Boolean(condition));
-  console.log(`  ${condition ? "GEÇTİ" : "BAŞARISIZ"}      ${name}`);
+  console.log(`  ${condition ? "PASS" : "FAIL"}      ${name}`);
   if (!condition && detail) console.log(`               ${detail}`);
 }
 
-// --- Minimal sahte DOM ------------------------------------------------------
+// --- Minimal fake DOM -------------------------------------------------------
 
 function createFakeDocument() {
   const shadowCalls = [];
@@ -70,7 +72,7 @@ function createFakeDocument() {
       focus() {
         doc.activeElement = this;
         if (this.parent?.isShadowRoot) this.parent.activeElement = this;
-        // Shadow içindeki odak, kökün activeElement'ine yansısın
+        // Focus inside a shadow tree should surface on the root's activeElement
         let node = this.parent;
         while (node) {
           if (node.isShadowRoot) node.activeElement = this;
@@ -128,7 +130,7 @@ function createFakeDocument() {
   return doc;
 }
 
-/** Sahte ağacı dolaşıp koşula uyan ilk düğümü bulur. */
+/** Walks the fake tree and returns the first node matching the predicate. */
 function find(node, predicate) {
   if (!node) return null;
   if (predicate(node)) return node;
@@ -176,68 +178,68 @@ const SEGMENTS = [
 ];
 
 async function main() {
-  console.log("=== shadow root ve yerleşim ===");
+  console.log("=== shadow root and layout ===");
   {
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, cost: 1, credits: 10, doc });
 
-    // closed: sayfadaki başka script host.shadowRoot ile Approve'a ulaşamıyor
-    check("shadow root closed açıldı", doc.shadowCalls, [{ mode: "closed" }]);
+    // closed: no other script on the page can reach Approve via host.shadowRoot
+    check("shadow root opened closed", doc.shadowCalls, [{ mode: "closed" }]);
 
     const { host, root } = shadowOf(doc);
-    checkThat("pencere body'ye eklendi", Boolean(host), "host yok");
+    checkThat("dialog appended to body", Boolean(host), "no host");
     checkThat(
-      "host stilleri inline ve !important",
+      "host styles are inline and !important",
       (host.attributes.style ?? "").includes("!important"),
       host.attributes.style
     );
     checkThat(
-      "sayfa CSS'i gizleyemesin diye visibility zorlanmış",
+      "visibility forced so page CSS cannot hide it",
       (host.attributes.style ?? "").includes("visibility:visible!important"),
       host.attributes.style
     );
 
     const dialog = find(root, (node) => node.attributes?.role === "dialog");
-    checkThat("role=dialog var", Boolean(dialog));
+    checkThat("role=dialog present", Boolean(dialog));
     check("aria-modal", dialog.attributes["aria-modal"], "true");
     checkThat(
-      "başlıkla ilişkilendirilmiş",
+      "associated with its heading",
       Boolean(dialog.attributes["aria-labelledby"]),
       dialog.attributes
     );
 
-    // Metin textContent ile yazılmış olmalı; innerHTML sahte DOM'da hiç yok
+    // Text must be written via textContent; the fake DOM has no innerHTML at all
     const texts = collectText(root).join("\n");
-    checkThat("replik metni görünüyor", texts.includes("I never asked for this"), "");
-    checkThat("take kimliği görünüyor", texts.includes("S01_T03"), "");
-    checkThat("timecode görünüyor", texts.includes("00:00.800"), "");
-    checkThat("kaynak görünüyor", texts.includes("S01_T03.wav"), "");
-    checkThat("kredi bilgisi görünüyor", texts.includes("1 credit"), "");
-    checkThat("bakiye değişimi görünüyor", texts.includes("10 \u2192 9"), "");
+    checkThat("line text is visible", texts.includes("I never asked for this"), "");
+    checkThat("take id is visible", texts.includes("S01_T03"), "");
+    checkThat("timecode is visible", texts.includes("00:00.800"), "");
+    checkThat("source is visible", texts.includes("S01_T03.wav"), "");
+    checkThat("credit cost is visible", texts.includes("1 credit"), "");
+    checkThat("balance change is visible", texts.includes("10 \u2192 9"), "");
     checkThat(
-      "render edilmediği söyleniyor",
+      "says nothing has been rendered yet",
       texts.includes("Nothing has been rendered"),
       ""
     );
 
-    // Varsayılan odak Vazgeç'te: Enter'a basmak render başlatmasın
-    check("varsayılan odak Vazgeç", doc.activeElement.textContent, "Cancel");
+    // Default focus on Cancel: pressing Enter must not start a render
+    check("default focus is Cancel", doc.activeElement.textContent, "Cancel");
 
     const cancel = find(root, (node) => node.textContent === "Cancel");
     cancel.click();
-    check("vazgeçmek false döndü", await pending, false);
-    check("pencere kaldırıldı", doc.body.children.length, 0);
-    check("keydown dinleyicisi bırakılmadı", doc.listenerCount("keydown"), 0);
+    check("cancelling resolved false", await pending, false);
+    check("dialog removed", doc.body.children.length, 0);
+    check("no keydown listener left behind", doc.listenerCount("keydown"), 0);
   }
 
-  console.log("\n=== onaylama ===");
+  console.log("\n=== approving ===");
   {
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, cost: 1, credits: 3, doc });
     const { root } = shadowOf(doc);
     find(root, (node) => node.textContent === "Approve and render").click();
-    check("onaylamak true döndü", await pending, true);
-    check("pencere kaldırıldı", doc.body.children.length, 0);
+    check("approving resolved true", await pending, true);
+    check("dialog removed", doc.body.children.length, 0);
   }
 
   console.log("\n=== Escape ===");
@@ -246,48 +248,48 @@ async function main() {
     const pending = confirmRender({ segments: SEGMENTS, doc });
     let prevented = false;
     doc.fire("keydown", { key: "Escape", preventDefault: () => (prevented = true) });
-    check("Escape false döndü", await pending, false);
-    checkThat("olay yutuldu", prevented);
+    check("Escape resolved false", await pending, false);
+    checkThat("event was swallowed", prevented);
   }
 
-  console.log("\n=== zaman aşımı ===");
+  console.log("\n=== timeout ===");
   {
-    // Ajan çağırıp insan masadan kalkarsa aracın promise'i sonsuza beklemesin.
-    // Yön ÖNEMLİ: zaman aşımı onay değil red.
+    // If an agent calls this and the human walks away, the tool promise must not
+    // wait forever. The DIRECTION matters: a timeout declines, it never approves.
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, doc, autoDeclineMs: 20 });
-    check("zaman aşımı reddetti", await pending, false);
-    check("pencere kaldırıldı", doc.body.children.length, 0);
+    check("timeout declined", await pending, false);
+    check("dialog removed", doc.body.children.length, 0);
   }
 
-  console.log("\n=== ajan isteği ===");
+  console.log("\n=== agent request ===");
   {
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, requestedBy: "agent", doc });
     const { root } = shadowOf(doc);
     const texts = collectText(root).join("\n");
-    checkThat("render'ı asistanın istediği yazıyor", texts.includes("assistant asked for this"), texts);
-    checkThat("onayın insanda olduğu yazıyor", texts.includes("You are the one approving"), "");
+    checkThat("says the assistant asked for the render", texts.includes("assistant asked for this"), texts);
+    checkThat("says approval is the human's call", texts.includes("You are the one approving"), "");
     find(root, (node) => node.textContent === "Cancel").click();
     await pending;
   }
 
-  console.log("\n=== insan isteği ===");
+  console.log("\n=== human request ===");
   {
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, requestedBy: "human", doc });
     const { root } = shadowOf(doc);
     checkThat(
-      "insan isteğinde asistan notu yok",
+      "no assistant note on a human request",
       !collectText(root).join("\n").includes("assistant asked for this")
     );
     find(root, (node) => node.textContent === "Cancel").click();
     await pending;
   }
 
-  console.log("\n=== çift karar ===");
+  console.log("\n=== double decision ===");
   {
-    // İki kez basmak promise'i iki kez çözmeye çalışmasın
+    // Clicking twice must not try to resolve the promise twice
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, doc });
     const { root } = shadowOf(doc);
@@ -295,32 +297,33 @@ async function main() {
     approve.click();
     approve.click();
     doc.fire("keydown", { key: "Escape", preventDefault: () => {} });
-    check("ilk karar geçerli", await pending, true);
+    check("first decision wins", await pending, true);
   }
 
-  console.log("\n=== Türkçe katalog ===");
+  console.log("\n=== Turkish catalogue ===");
   {
-    // Pencere ajanın gördüğü metni değiştirmiyor ama insanın gördüğünü değiştiriyor.
+    // The dialog does not change what the agent sees, but it does change what the
+    // human sees.
     setLocale("tr");
     const doc = createFakeDocument();
     const pending = confirmRender({ segments: SEGMENTS, requestedBy: "agent", doc });
     const { root } = shadowOf(doc);
     const texts = collectText(root).join("\n");
-    checkThat("başlık çevrildi", texts.includes("render edilsin mi"), texts.slice(0, 200));
-    checkThat("kredi satırı çevrildi", texts.includes("kredi düşecek"), "");
-    checkThat("asistan notu çevrildi", texts.includes("asistan istedi"), "");
+    checkThat("heading translated", texts.includes("render edilsin mi"), texts.slice(0, 200));
+    checkThat("credit line translated", texts.includes("kredi düşecek"), "");
+    checkThat("assistant note translated", texts.includes("asistan istedi"), "");
     const cancel = find(root, (node) => node.textContent === "Vazgeç");
-    checkThat("iptal düğmesi çevrildi", Boolean(cancel));
-    // Provenance verisi çevrilmiyor: take kimliği ve timecode dilden bağımsız
-    checkThat("take kimliği aynı kaldı", texts.includes("S01_T03"), "");
-    checkThat("timecode aynı kaldı", texts.includes("00:00.800"), "");
+    checkThat("cancel button translated", Boolean(cancel));
+    // Provenance data is not translated: take id and timecode are language independent
+    checkThat("take id unchanged", texts.includes("S01_T03"), "");
+    checkThat("timecode unchanged", texts.includes("00:00.800"), "");
     cancel?.click();
-    check("Türkçe pencerede de vazgeçilebiliyor", await pending, false);
+    check("cancelling works in the Turkish dialog too", await pending, false);
     setLocale("en");
   }
 
   const passed = results.filter(Boolean).length;
-  console.log(`\n${passed}/${results.length} test geçti`);
+  console.log(`\n${passed}/${results.length} tests passed`);
   process.exit(passed === results.length ? 0 : 1);
 }
 

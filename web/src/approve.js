@@ -1,22 +1,23 @@
 /**
- * Render onay penceresi. Ürünün tek geri alınamaz adımının kapısı.
+ * The render approval dialog. The gate on the product's single irreversible step.
  *
- * Üç savunma ve her birinin somut bir sebebi var:
+ * Three defences, each with a concrete reason:
  *
- * 1. **Closed shadow root.** Sayfadaki başka bir script `host.shadowRoot` ile içeriye
- *    ulaşamıyor (closed'da null dönüyor), yani Approve düğmesini programatik olarak
- *    bulup basamıyor. Kök referansı bu modülün kapanışında duruyor.
+ * 1. **Closed shadow root.** Another script on the page cannot reach in through
+ *    host.shadowRoot — closed returns null — so it cannot find the Approve button and
+ *    press it programmatically. The root reference stays in this module's closure.
  *
- * 2. **Sadece textContent.** Geçen projede onay penceresini innerHTML ile kurmuştuk ve
- *    zehirli bir araç adı kendi Approve düğmesine basabiliyordu. Buradaki metinler
- *    take kimlikleri, replik metni ve dosya adları — hepsi Whisper çıktısı ve kullanıcı
- *    dosyaları, yani kontrol etmediğimiz veri.
+ * 2. **textContent only.** On the previous project we built the approval dialog with
+ *    innerHTML and a poisoned tool name could press its own Approve button. The strings
+ *    here are take ids, dialogue and filenames — Whisper output and user files, which is
+ *    data we do not control.
  *
- * 3. **Host stilleri inline ve !important.** Sayfa CSS'i pencereyi görünmez yapıp
- *    kullanıcıya farkında olmadan onaylatamasın.
+ * 3. **Host styles inline and !important.** So page CSS cannot hide the dialog and get
+ *    something approved without the user noticing.
  *
- * Ajan `commit_render` çağırdığında bu pencere açılıyor ve aracın promise'i insanın
- * kararını bekliyor. HITL kapısının somut hali bu: ajan isteyebiliyor, insan veriyor.
+ * When the agent calls commit_render this dialog opens and the tool's promise waits on
+ * the human's decision. That is the HITL gate made literal: the agent can ask, the human
+ * decides.
  */
 
 import { seconds, t, toneLabel } from "./i18n.js";
@@ -71,7 +72,7 @@ function timecode(ms) {
 function el(root, tag, props = {}, children = []) {
   const node = root.createElement(tag);
   for (const [key, value] of Object.entries(props)) {
-    // Sadece textContent. innerHTML yok, olmayacak.
+    // textContent only. No innerHTML, and there will not be.
     if (key === "text") node.textContent = value;
     else if (key === "class") node.className = value;
     else if (value !== null && value !== undefined && value !== false) {
@@ -83,14 +84,14 @@ function el(root, tag, props = {}, children = []) {
 }
 
 /**
- * Onay ister. Söz verilen değer: onaylandı mı.
+ * Asks for approval. Resolves with whether it was approved.
  *
  * @param {object}  options
- * @param {Array}   options.segments      timeline parçaları
- * @param {number}  options.cost          düşecek kredi
- * @param {number}  options.credits       mevcut bakiye
+ * @param {Array}   options.segments      the timeline segments
+ * @param {number}  options.cost          credits that will be spent
+ * @param {number}  options.credits       the current balance
  * @param {string}  options.requestedBy   "agent" | "human"
- * @param {Document} [options.doc]        test edilebilirlik için
+ * @param {Document} [options.doc]        injected for testability
  * @returns {Promise<boolean>}
  */
 export function confirmRender({
@@ -104,7 +105,7 @@ export function confirmRender({
   if (!doc) return Promise.resolve(false);
 
   const host = doc.createElement("div");
-  // Sayfa CSS'i pencereyi gizleyip farkında olmadan onaylatamasın
+  // So page CSS cannot hide the dialog and get something approved unnoticed
   host.setAttribute(
     "style",
     "all:initial!important;position:fixed!important;inset:0!important;" +
@@ -112,7 +113,7 @@ export function confirmRender({
       "opacity:1!important;pointer-events:auto!important"
   );
 
-  // closed: sayfadaki başka script host.shadowRoot ile içeriye ulaşamıyor
+  // closed: another script on the page cannot reach in through host.shadowRoot
   const root = host.attachShadow({ mode: "closed" });
   root.appendChild(el(doc, "style", { text: STYLE }));
 
@@ -205,7 +206,7 @@ export function confirmRender({
         close(false);
         return;
       }
-      // Odak tuzağı: Tab pencereden çıkıp arkadaki sayfaya gitmesin
+      // Focus trap: Tab must not leave the dialog for the page behind it
       if (event.key === "Tab") {
         const focusable = [cancel, approve];
         const active = root.activeElement;
@@ -222,12 +223,12 @@ export function confirmRender({
     approve.addEventListener("click", () => close(true));
     doc.addEventListener("keydown", onKeyDown, true);
 
-    // Ajan çağırıp insan masadan kalkarsa aracın promise'i sonsuza kadar
-    // beklemesin. Zaman aşımı ONAY DEĞİL, reddetme yönünde.
+    // If the agent asks and the human walks away, the tool's promise must not wait
+    // forever. The timeout resolves as DECLINED, never as approved.
     const timer = setTimeout(() => close(false), autoDeclineMs);
 
     doc.body.appendChild(host);
-    // Varsayılan odak iptalde: yanlışlıkla Enter'a basmak render başlatmasın
+    // Focus defaults to cancel, so a stray Enter does not start a render
     cancel.focus();
   });
 }

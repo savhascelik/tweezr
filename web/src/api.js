@@ -1,9 +1,9 @@
 /**
- * Sunucu çağrıları.
+ * Server calls.
  *
- * Oturum çerezi HttpOnly, yani JS onu okumuyor — fetch otomatik gönderiyor.
- * `credentials: "same-origin"` bunu açıkça yazıyor: aynı origin'deyiz ve
- * ajanın devraldığı oturum bağlamı bu çerezle taşınıyor.
+ * The session cookie is HttpOnly, so JS never reads it — fetch sends it automatically.
+ * `credentials: "same-origin"` states that explicitly: we are on one origin, and the
+ * session context the agent inherits travels on this cookie.
  */
 
 async function request(path, options = {}) {
@@ -17,7 +17,7 @@ async function request(path, options = {}) {
   try {
     payload = await response.json();
   } catch {
-    // Gövdesiz hata cevapları olabilir
+    // Some error responses have no body
   }
 
   if (!response.ok) {
@@ -79,13 +79,13 @@ export function renderStatus(jobId) {
   return request(`/api/render/${encodeURIComponent(jobId)}`);
 }
 
-/** İş bitene kadar durumu yokluyor. Render CPU işi, süresi öngörülemez. */
+/** Polls until the job settles. Rendering is CPU work with an unpredictable duration. */
 export async function waitForRender(jobId, { intervalMs = 700, timeoutMs = 120000 } = {}) {
   const deadline = Date.now() + timeoutMs;
   let job = await renderStatus(jobId);
   while (job.status === "queued" || job.status === "running") {
     if (Date.now() > deadline) {
-      throw new Error(`Render zaman aşımına uğradı (${job.status})`);
+      throw new Error(`The render timed out (${job.status})`);
     }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
     job = await renderStatus(jobId);

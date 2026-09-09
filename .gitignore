@@ -3,36 +3,36 @@
 __pycache__/
 *.pyc
 
-# scratch/ — üretilen her şey burada durur ve hiçbiri repoya girmez:
-# test medyası, transkript çıktıları, kesilmiş klipler, indirilen korpus.
-# Kodun ürettiği şeyi commit etmiyoruz; transcribe.py / verify_cut.py yeniden üretir.
+# scratch/ -- everything generated lands here and none of it enters the repo:
+# test media, transcript output, cut clips, downloaded corpus.
+# We do not commit what the code produces; transcribe.py / verify_cut.py regenerate it.
 scratch/*
 !scratch/.gitkeep
 
-# Kimlik bilgileri. db.py ve tone.py bunları ortam değişkenlerinden okuyor,
-# hiçbiri kodda durmuyor.
+# Credentials. db.py and tone.py read these from the environment,
+# none of them live in the code.
 .env
 .env.*
 !.env.example
 
-# Editör ve OS gürültüsü
+# Editor and OS noise
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# Model önbelleği (yanlışlıkla proje içine inerse)
+# Model cache (in case it lands inside the project by accident)
 models/
 *.bin
 *.onnx
 
-# web/ build adımı olmadan servis ediliyor, yani orada derlenmiş çıktı YOK ve
-# hepsi commit ediliyor. Bunlar sadece ileride bir araç eklenirse diye duruyor.
+# web/ is served without a build step, so there is NO compiled output there and
+# all of it is committed. These entries only exist in case a tool is added later.
 node_modules/
 dist/
 
-# SQLite oturum defteri. scratch/ altında ama açıkça yazıyoruz: bu dosya
-# ziyaretçi oturumları ve kredi bakiyeleri tutuyor, repoya girmemeli.
+# SQLite session ledger. It lives under scratch/ but is spelled out here too: this
+# file holds visitor sessions and credit balances and must not enter the repo.
 *.db
 *.db-wal
 *.db-shm

@@ -1,10 +1,10 @@
 /**
- * Bağlama noktası.
+ * The wiring.
  *
- * `ready` promise'i dışa açılıyor: WebMCP araç kaydı oturum ve kütüphane hazır
- * olduktan SONRA yapılmak zorunda. Geçen projede bunu atlayınca kayıt yarışı
- * yüzünden ajan boş araç listesi görmüştü. Araç açıklamaları da kredi bakiyesini
- * içeriyor, yani oturum bilinmeden doğru açıklama üretilemez.
+ * The `ready` promise is exported because WebMCP registration has to happen AFTER the
+ * session and the library are ready. Skipping that on the previous project let a
+ * registration race show the agent an empty tool list. The tool descriptions also carry
+ * the credit balance, so the right description cannot be produced without the session.
  */
 
 import * as api from "./api.js";
@@ -94,9 +94,9 @@ const actions = {
   },
 
   /**
-   * Sayfa içi asistan. Ajanın bulduğu adaylar ve koyduğu öneri, WebMCP araçlarının
-   * kullandığı AYNI store işlemlerinden geçiyor — yani iki giriş kapısı da tek
-   * timeline'ı değiştiriyor, insan hangisini kullandığını ayırt etmek zorunda değil.
+   * The in-page assistant. The candidates the agent found and the proposal it placed go
+   * through the SAME store operations the WebMCP tools use — so both entry points change
+   * one timeline, and the human never has to tell which was used.
    */
   async chat(message) {
     store.appendChatMessage({ role: "user", text: message });
@@ -124,10 +124,11 @@ const actions = {
   },
 
   /**
-   * Tek geri alınamaz adım, ve tek kredi harcayan adım.
+   * The single irreversible step, and the only one that spends credit.
    *
-   * Ajan da insan da buraya geliyor ama onay her ikisinde de insanın. Ajan
-   * çağırdığında aracın promise'i pencerede bekliyor — HITL kapısının somut hali.
+   * Both the agent and the human arrive here, but in both cases the approval is the
+   * human's. When the agent calls it, the tool's promise waits on the dialog — the HITL
+   * gate made literal.
    */
   async render({ requestedBy = "human" } = {}) {
     const { timeline, session } = store.getState();
@@ -217,8 +218,8 @@ const player = createPlayer({
 
 store.subscribe((state) => ui.render(state));
 
-// Dil değişimi tüm metni tazeliyor. Ayrı bir kod yolu yok: `render` sabit
-// etiketleri de yazdığı için durum değişimiyle aynı şekilde ilerliyor.
+// A locale change refreshes all the text. There is no second code path: because `render`
+// also writes the static labels, it proceeds exactly like a state change.
 onLocaleChange(() => {
   ui.render(store.getState());
   refreshChatStatus().catch(() => {});
@@ -227,11 +228,12 @@ onLocaleChange(() => {
 ui.render(store.getState());
 
 /**
- * Asistanın kapalı olma sebebini yerelleştiriyor.
+ * Localises why the assistant is off.
  *
- * Sunucu makine okunur bir `reason_code` döndürüyor, metni istemci üretiyor —
- * sunucu kullanıcının dilini bilmiyor ve bilmek zorunda da değil. Bilinmeyen bir
- * kod gelirse sunucunun İngilizce metnine düşüyoruz, boş bırakmıyoruz.
+ * The server returns a machine-readable `reason_code` and the client produces the text —
+ * the server does not know the reader's language and has no business guessing. For a code
+ * we do not recognise we fall back to the server's English text rather than showing
+ * nothing.
  */
 async function refreshChatStatus() {
   const chat = await api.chatStatus();
@@ -246,7 +248,7 @@ async function refreshChatStatus() {
   return chat;
 }
 
-/** Oturum, kütüphane VE araç kaydı tamamlanınca çözülüyor. */
+/** Resolves once the session, the library AND tool registration are all done. */
 export const ready = (async () => {
   try {
     const session = await api.readSession();
@@ -255,8 +257,8 @@ export const ready = (async () => {
     const library = await api.libraryStats();
     store.patch({ library: library.stats });
 
-    // Asistan anahtar yoksa kapalı. Ürünün geri kalanı bundan etkilenmiyor, o
-    // yüzden hata olsa bile başlatmayı düşürmüyoruz.
+    // The assistant is off without a key. The rest of the product does not depend on it,
+    // so even a failure here must not bring startup down.
     try {
       await refreshChatStatus();
     } catch (error) {
@@ -284,5 +286,5 @@ export const ready = (async () => {
   }
 })();
 
-// WebMCP kayıt katmanı ve konsoldan elle sürmek için.
+// For the WebMCP registration layer, and for driving this by hand from the console.
 window.__cinema = { ready, actions, store, player };

@@ -1,33 +1,34 @@
 /**
- * WebMCP araçları. Ürünün farklılaştırıcı katmanı.
+ * The WebMCP tools. The product's differentiating layer.
  *
- * Klasik ajan kurgusunda ajan backend'e "1.2-2.5 ve 15.1-16.3'ü kes, render et" der
- * ve MP4 geri döner. Yanlış take seçtiyse bunu render bittikten sonra anlarsın; backend
- * kapalı bir kutudur. Burada araçlar sayfanın kendisinde çalışıyor, yani öneri
- * kurgucunun ekranında, gerçek medyanın üstünde, her fragmentin kaynağı görünür halde
- * beliriyor. Karar render'dan ÖNCE veriliyor.
+ * In the usual arrangement an agent tells a backend "cut 1.2-2.5 and 15.1-16.3, render
+ * it" and an MP4 comes back. If it picked the wrong take you find out after the render
+ * finishes, because the backend is a closed box. Here the tools run in the page itself,
+ * so the proposal appears on the editor's screen, over the real footage, with the source
+ * of every fragment visible. The decision happens BEFORE the render.
  *
- * API yüzeyi geçen projede gerçek bir ChatGPT in-app browser koşusunda doğrulandı:
+ * The API surface was exercised in a real ChatGPT in-app browser run on the previous
+ * project:
  *
- *   document.modelContext.registerTool(tool, { signal })   // native yalnızca
- *                                                          // navigator'da olabilir
- *   document.modelContext.getTools()                       // execute içermez
- *   document.modelContext.executeTool(toolObject, input)   // isim DEĞİL, obje
+ *   document.modelContext.registerTool(tool, { signal })   // native may live on
+ *                                                          // navigator only
+ *   document.modelContext.getTools()                       // without execute
+ *   document.modelContext.executeTool(toolObject, input)   // the object, NOT a name
  *   modelContext.addEventListener("toolchange", ...)
  *
- * Araç adı: 1-128 karakter, [A-Za-z0-9_.-].
+ * Tool names: 1-128 characters of [A-Za-z0-9_.-].
  *
- * `execute` düz JSON objesi döndürüyor; doğrulanan yol bu (polyfill stringify ediyor).
- * Native tarafın MCP'nin `content` sarmalayıcısını beklemesi mümkün, o yüzden her
- * cevapta insan tarafından okunabilir bir `summary` alanı var: taşıma katmanı ne
- * yaparsa yapsın ajan bir cümle görüyor.
+ * `execute` returns a plain JSON object, which is the path that was verified (the
+ * polyfill stringifies it). Native may expect MCP's `content` wrapper instead, so every
+ * reply carries a human-readable `summary` field: whatever the transport does, the agent
+ * still sees a sentence.
  */
 
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]+$/;
 
 function resolveModelContext() {
-  // Spec document.modelContext diyor ama native destek yalnızca navigator'da
-  // duruyor olabilir. İkisini de deniyoruz, bulduğumuzu spec'in yerine yansıtıyoruz.
+  // The spec says document.modelContext, but native support may live on navigator only.
+  // Try both, then mirror whatever we find to where the spec puts it.
   const context =
     (typeof document !== "undefined" && document.modelContext) ||
     (typeof navigator !== "undefined" && navigator.modelContext) ||
@@ -39,7 +40,7 @@ function resolveModelContext() {
   return context;
 }
 
-/** Kredi durumuna göre değişen açıklama eki. Ajan çağırmadan önce öğrensin. */
+/** A description suffix that tracks the credit state, so the agent learns before it calls. */
 function creditNote(session, cost) {
   if (!cost) return " Costs no credits.";
   if (!session) return ` Costs ${cost} credit.`;
@@ -65,15 +66,15 @@ function summarizeCandidate(candidate) {
     end_ms: candidate.end_ms,
     duration_ms: candidate.duration_ms,
     text: candidate.text,
-    // provenance: ajan da kaynağı görsün, sadece insan değil
+    // provenance: the agent should see the source too, not only the human
     source: candidate.source_url,
   };
 }
 
 /**
- * Araç tanımlarını mevcut duruma göre üretir.
- * Açıklamalar ajanın tek kullanım kılavuzu, o yüzden ne yaptıklarını değil
- * NE ZAMAN kullanılacaklarını anlatıyorlar.
+ * Builds the tool definitions from the current state.
+ * The descriptions are the agent's only manual, so they describe WHEN to reach for each
+ * tool rather than what it does.
  */
 function buildTools({ actions, store, costs, session }) {
   return [
@@ -269,8 +270,8 @@ function buildTools({ actions, store, costs, session }) {
           throw new Error("The timeline is empty. Call propose_cut before commit_render.");
         }
 
-        // requestedBy: "agent" — onay penceresi bunu yazıyor, insan render'ı kimin
-        // istediğini görüyor. Bu çağrı pencerede BEKLİYOR: kapı burada.
+        // requestedBy: "agent" — the dialog prints this, so the human sees who asked for
+        // the render. This call WAITS on the dialog: that is the gate.
         const result = await actions.render({ requestedBy: "agent" });
 
         if (!result?.approved) {
@@ -301,7 +302,7 @@ function buildTools({ actions, store, costs, session }) {
   ];
 }
 
-/** Açıklamaların değiştiği durumlarda yeniden kayıt gerekiyor. */
+/** Re-registration is needed whenever a description changes. */
 function signature(tools) {
   return tools.map((tool) => `${tool.name}:${tool.description}`).join("|");
 }
@@ -310,26 +311,27 @@ export async function installTools({ actions, store, modelContext = undefined })
   const context = modelContext ?? resolveModelContext();
 
   if (!context || typeof context.registerTool !== "function") {
-    // Polyfill YÜKLEMİYORUZ. Ajan desteğini taklit etmek, desteklemeyen tarayıcıda
-    // sessizce yanlış davranış üretir. Sayfa paneli aynı akışı elle sürüyor.
+    // We do NOT install a polyfill. Faking agent support produces silently wrong
+    // behaviour in a browser that cannot do it. The on-page panel drives the same flow.
     store.patch({ webmcp: { available: false, registered: 0 } });
     return { available: false, registered: [] };
   }
 
-  // Kayıt durumu kuruluma ait, modüle değil: modül seviyesinde tutulsa iki
-  // installTools çağrısı birbirinin araçlarını iptal ederdi.
+  // Registration state belongs to the install, not the module: at module scope two
+  // installTools calls would abort each other's tools.
   const registrations = new Map(); // name -> { controller, description }
 
   let lastSignature = "";
   let chain = Promise.resolve();
 
   /**
-   * Senkronizasyonları sıraya diziyor.
+   * Serialises the syncs.
    *
-   * Kayıt async ve iptal-yeniden kaydet arasında araçlar bir an yok oluyor. İki sync
-   * iç içe girerse ajan yarım kaydedilmiş bir liste görür. Zincir hem bunu engelliyor
-   * hem de `await sync()` çağıranın gerçekten oturmuş duruma bakmasını sağlıyor —
-   * "uçuşta var, hemen dön" davranışı bu garantiyi vermiyordu.
+   * Registration is async, and between the abort and the re-register the tools briefly do
+   * not exist. Two overlapping syncs would let the agent see a half-registered list. The
+   * chain prevents that and also makes `await sync()` mean the caller is looking at a
+   * settled state — the earlier "one is in flight, return immediately" behaviour did not
+   * give that guarantee.
    */
   function sync() {
     chain = chain.then(syncOnce, syncOnce);
@@ -348,15 +350,15 @@ export async function installTools({ actions, store, modelContext = undefined })
     const next = signature(tools);
     if (next === lastSignature) return;
 
-    // Yeniden kayıttan önce eskiyi iptal ediyoruz: registerTool aynı isimde
-    // ikinci kaydı reddediyor. `updateTool` diye bir API yok.
+    // Abort the old registration before re-registering: registerTool rejects a second
+    // registration under the same name. There is no `updateTool` API.
     for (const { controller } of registrations.values()) controller.abort();
     registrations.clear();
 
     const registered = [];
     for (const tool of tools) {
       if (!TOOL_NAME_PATTERN.test(tool.name)) {
-        console.error(`Araç adı geçersiz, atlandı: ${tool.name}`);
+        console.error(`Invalid tool name, skipped: ${tool.name}`);
         continue;
       }
       const controller = new AbortController();
@@ -365,9 +367,9 @@ export async function installTools({ actions, store, modelContext = undefined })
         registrations.set(tool.name, { controller, description: tool.description });
         registered.push(tool.name);
       } catch (error) {
-        // Kayıt reddedilirse sebebini görmek şart. En sık sebep
-        // Origin-Agent-Cluster header'ının eksik olması ve SecurityError.
-        console.error(`registerTool('${tool.name}') reddedildi:`, error);
+        // If registration is refused we need the reason. The most common cause is a
+        // missing Origin-Agent-Cluster header and a SecurityError.
+        console.error(`registerTool('${tool.name}') was refused:`, error);
       }
     }
 
@@ -378,16 +380,16 @@ export async function installTools({ actions, store, modelContext = undefined })
 
   const registered = await sync();
 
-  // Açıklamalar SADECE oturuma (kredi, fiyat) bağlı. Her durum değişiminde sync
-  // çağırmak oynatma sırasında saniyede ~60 kez beş araç tanımı kurmak demek —
-  // rAF döngüsü her karede setPlayback yapıyor. O yüzden ucuz bir karşılaştırmayla
-  // sadece oturum değiştiğinde yeniden kayıt yapıyoruz.
+  // The descriptions depend ONLY on the session (credits, prices). Syncing on every state
+  // change would mean building five tool definitions about sixty times a second during
+  // playback, because the rAF loop calls setPlayback on every frame. So a cheap comparison
+  // limits re-registration to when the session actually changes.
   let lastSessionKey = JSON.stringify(store.getState().session ?? null);
   store.subscribe((state) => {
     const key = JSON.stringify(state.session ?? null);
     if (key === lastSessionKey) return;
     lastSessionKey = key;
-    sync().catch((error) => console.error("araç güncellemesi başarısız", error));
+    sync().catch((error) => console.error("tool update failed", error));
   });
 
   return { available: true, registered: registered ?? [], sync };

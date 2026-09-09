@@ -1,11 +1,11 @@
-"""Paylaşılan ClickHouse istemcisi.
+"""The shared ClickHouse client.
 
-Hem HTTP uçları hem ADK ajanının araçları aynı istemciyi kullanıyor. routes.py içinde
-tutulsaydı agent_tools.py onu import etmek zorunda kalır ve döngüsel import çıkardı.
+Both the HTTP endpoints and the ADK agent's tools use the same client. Kept inside
+routes.py it would force agent_tools.py to import that module, which is a circular
+import.
 
-Hata olursa istemci düşürülüyor ve bir sonraki istekte yeniden kuruluyor: ClickHouse
-Cloud bağlantıyı boşta bırakınca kapatıyor ve ölü bir istemciyi elde tutmak her isteği
-düşürür.
+On failure the client is dropped and rebuilt on the next call: ClickHouse Cloud closes
+idle connections, and holding on to a dead client would fail every request after it.
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ def client():
 
 
 def drop() -> None:
-    """Bir sonraki çağrıda yeniden bağlan."""
+    """Reconnect on the next call."""
     global _client
     with _lock:
         _client = None
