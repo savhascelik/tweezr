@@ -160,13 +160,28 @@ export function uploadYouTube({ url, label = "", language = "", max_duration = 1
 /** Polls until the ingest settles. Whisper on CPU takes seconds to minutes. */
 export async function waitForUpload(jobId, { intervalMs = 1000, timeoutMs = 600000 } = {}) {
   const deadline = Date.now() + timeoutMs;
-  let job = await uploadJob(jobId);
-  while (job.status === "queued" || job.status === "running") {
-    if (Date.now() > deadline) throw new Error(`The ingest timed out (${job.status})`);
+  let notFoundRetries = 0;
+  let job = null;
+
+  while (Date.now() <= deadline) {
+    try {
+      job = await uploadJob(jobId);
+      notFoundRetries = 0;
+    } catch (err) {
+      if (err.status === 404 && notFoundRetries < 3) {
+        notFoundRetries++;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        continue;
+      }
+      throw err;
+    }
+
+    if (job.status !== "queued" && job.status !== "running") {
+      return job;
+    }
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
-    job = await uploadJob(jobId);
   }
-  return job;
+  throw new Error(`The ingest timed out (${job?.status ?? "unknown"})`);
 }
 
 export function requestRender(segments) {
