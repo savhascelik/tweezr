@@ -98,9 +98,10 @@ Notes:
 .venv\Scripts\python.exe -m dev.check_deploy https://<service-url>
 ```
 
-27 checks: the WebMCP preconditions (https, `Origin-Agent-Cluster: ?1`, no CSP that would
-break the tools), assets, a session established without a login, library and search, media
-HTTP range support, whether uploads are on, and a real render.
+31 checks: the WebMCP preconditions (https, `Origin-Agent-Cluster: ?1`, no CSP that would
+break the tools), assets, a session established without a login, library and search, that
+the vocabulary panel has something to offer and that clicking one of its words finds
+anything, media HTTP range support, whether uploads are on, and a real render.
 
 If it reports **uploads OFF**, the image was built without `requirements-ingest.txt`. That
 is a valid deployment and the interface says so plainly, but on a URL meant to be tried by

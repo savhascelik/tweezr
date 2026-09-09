@@ -13,6 +13,13 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+# Before the first os.environ read below. `pipeline/__init__.py` does this too, but this
+# module is imported first on some paths and a settings file that reads a variable before
+# anything loaded it would be a very quiet bug.
+from pipeline import env as _env
+
+_env.load()
+
 APP_ROOT = Path(__file__).resolve().parent.parent
 
 # --- Projects ---
