@@ -16,6 +16,46 @@ millisecond, ranks the takes by how they were delivered, and proposes the rough 
 the timeline **without rendering anything**. Under every fragment: which recording,
 which timecode.
 
+## Runtime use of Google Cloud and ClickHouse
+
+Both are imported and called in code, not named in prose. The call sites:
+
+**Google Cloud — Gemini through `google-genai`.** `pipeline/tone.py`:
+`from google import genai` (line 107), then
+`client.models.generate_content(model="gemini-2.5-flash", ...)` (line 121). One call per
+take: the audio goes in, a delivery label per line comes out (calm, tense, whisper) with a
+confidence. It becomes a ClickHouse column, so "the calmer reading of this line" is a filter
+and a ranking rather than a guess.
+
+**Google Cloud — `google-adk`.** `server/agent.py`:
+`from google.adk.agents import Agent` (line 85),
+`Agent(model="gemini-2.5-flash", tools=agent_tools.TOOLS)` (line 90),
+`InMemoryRunner(agent=agent, app_name=APP_NAME)` (line 99). This is the in-page assistant
+behind `POST /api/chat`, for a visitor who has no agent of their own. Its tool schema is
+built from the function signatures and docstrings in `server/agent_tools.py`.
+
+**ClickHouse — `clickhouse-connect`.** `pipeline/db.py`:
+`import clickhouse_connect` (line 42), `clickhouse_connect.get_client(...)` (line 47). Every
+query lives in `pipeline/queries.py` and nowhere else.
+
+ClickHouse is the **retrieval engine here, not a metrics bucket**. One row per word, primary
+key `(project_id, word_norm, start_ms)`. Phrase search is a single indexed pass using
+higher-order array functions — candidate lines come off the index by the phrase's first word,
+their words are collected into a sorted array, and `arraySlice` finds every consecutive
+match. No self-joins, so an N-word phrase is not N table scans. Called by
+`POST /api/find_line`, `POST /api/lines`, `GET /api/vocabulary`, `GET /api/word/{word}` and
+`GET /api/library/stats`.
+
+The SQL is asserted equal to a local reference implementation on every test run
+(`pipeline/verify_cut.py`), because returning the wrong take quietly is the most expensive
+failure a search can have.
+
+Verify a running instance end to end:
+
+```powershell
+.venv\Scripts\python.exe -m dev.check_deploy http://127.0.0.1:8080   # 31 checks
+```
+
 ## What works today
 
 This repository is mid-build. As of now, **working and tested**:
