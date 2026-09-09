@@ -446,7 +446,23 @@ const actions = {
       if (result.session) store.patch({ session: result.session });
       return result;
     } catch (error) {
-      store.appendChatMessage({ role: "error", text: error.message });
+      let displayMsg = error.message;
+      const lower = (error.message || "").toLowerCase();
+      if (
+        lower.includes("quota") ||
+        lower.includes("resource_exhausted") ||
+        lower.includes("429") ||
+        lower.includes("rate limit") ||
+        lower.includes("api_key") ||
+        lower.includes("free tier") ||
+        lower.includes("billing") ||
+        lower.includes("gemini")
+      ) {
+        displayMsg = error.message.includes("Gemini API warning")
+          ? error.message
+          : `Gemini API warning: An issue occurred with the Gemini API key -- your free tier quota has likely run out. Please check your quota at Google AI Studio (https://aistudio.google.com/). Search, story track, preview and provenance continue to work without the assistant. (${error.message})`;
+      }
+      store.appendChatMessage({ role: "error", text: displayMsg });
       store.setChat({ busy: false });
       throw error;
     }

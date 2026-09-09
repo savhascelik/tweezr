@@ -115,6 +115,52 @@ async def adk_session_id(user_id: str) -> str:
     return session.id
 
 
+def format_gemini_error(error: Exception | str) -> str:
+    """Produces a clear, user-facing English explanation when Gemini fails,
+    specifically noting when free tier quota has likely been exhausted or the key has issues."""
+    msg = str(error)
+    lower = msg.lower()
+
+    is_quota = any(
+        k in lower
+        for k in [
+            "resource_exhausted",
+            "quota",
+            "429",
+            "rate limit",
+            "rate_limit",
+            "free tier",
+            "exhausted",
+            "billing",
+            "credit",
+        ]
+    )
+    is_key_issue = any(
+        k in lower
+        for k in [
+            "api_key",
+            "api key",
+            "key not valid",
+            "invalid_argument",
+            "unauthenticated",
+            "unauthorized",
+            "permission_denied",
+            "401",
+            "403",
+        ]
+    )
+
+    if is_quota or is_key_issue:
+        return (
+            "Gemini API warning: An issue occurred with the Gemini API key -- your free tier quota "
+            "has likely run out (Rate Limit / Quota Exceeded) or the API key is restricted. "
+            "Please check your quota and billing at Google AI Studio (https://aistudio.google.com/) "
+            "or Google Cloud Console. Search, timeline, and preview features remain fully functional without the assistant."
+        )
+
+    return f"The assistant encountered an error (likely Gemini free tier quota exceeded or connection issue): {msg}"
+
+
 async def ask(user_id: str, message: str, context: dict | None = None) -> dict:
     """Asks the agent a message. Returns the reply plus what the tools collected."""
     from google.genai import types
@@ -129,20 +175,23 @@ async def ask(user_id: str, message: str, context: dict | None = None) -> dict:
     collected = agent_tools.new_collection()
 
     reply_parts: list[str] = []
-    async for event in active.run_async(
-        user_id=user_id,
-        session_id=session_id,
-        new_message=types.Content(role="user", parts=[types.Part(text=message)]),
-    ):
-        if event.error_message:
-            raise RuntimeError(event.error_message)
-        if not event.content or not event.content.parts:
-            continue
-        # Only the final text is collected; intermediate streamed parts repeat it
-        if event.is_final_response():
-            for part in event.content.parts:
-                if getattr(part, "text", None):
-                    reply_parts.append(part.text)
+    try:
+        async for event in active.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=types.Content(role="user", parts=[types.Part(text=message)]),
+        ):
+            if event.error_message:
+                raise RuntimeError(format_gemini_error(event.error_message))
+            if not event.content or not event.content.parts:
+                continue
+            # Only the final text is collected; intermediate streamed parts repeat it
+            if event.is_final_response():
+                for part in event.content.parts:
+                    if getattr(part, "text", None):
+                        reply_parts.append(part.text)
+    except Exception as error:
+        raise RuntimeError(format_gemini_error(error)) from error
 
     return {
         "reply": "".join(reply_parts).strip(),

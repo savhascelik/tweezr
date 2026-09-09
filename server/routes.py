@@ -710,7 +710,7 @@ def chat_status(request: Request, response: Response) -> dict:
         "reason_code": None if available else "no_api_key",
         "reason": None
         if available
-        else "No GEMINI_API_KEY on the server. The search panel, timeline and preview "
+        else "No GEMINI_API_KEY on the server (or free tier quota has run out). The search panel, timeline and preview "
         "all work without the assistant.",
     }
 
@@ -744,7 +744,8 @@ async def chat(body: ChatRequest, request: Request, response: Response) -> dict:
     except agent.AgentUnavailable as error:
         raise HTTPException(status_code=503, detail=str(error))
     except Exception as error:
-        raise HTTPException(status_code=502, detail=f"The assistant could not answer: {error}")
+        detail = agent.format_gemini_error(error)
+        raise HTTPException(status_code=502, detail=detail)
 
     return {
         **result,

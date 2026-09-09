@@ -77,7 +77,7 @@ const CATALOGUE = {
     "assistant.emptyReply": "(empty reply)",
     "assistant.statusFailed": "Could not read assistant status: {error}",
     "assistant.reason.no_api_key":
-      "No GEMINI_API_KEY on the server. Search, the story track, preview and provenance all work without the assistant.",
+      "No GEMINI_API_KEY on the server, or free tier quota has run out. Search, the story track, preview and provenance all work without the assistant.",
     "assistant.modeSidebar": "Switch to sidebar mode",
     "assistant.modeSpotlight": "Switch to spotlight mode",
     "assistant.toggle": "Tweezr AI",
