@@ -211,7 +211,7 @@ def main() -> int:
     print(f"   Saved take definition -> {doc_path}")
 
     first_line = doc["takes"][0]["lines"][0]["text"]
-    print("\n✅ Done! In the web interface or via WebMCP:")
+    print("\n[OK] Done! In the web interface or via WebMCP:")
     print(f'   Search phrase : "{first_line[:50]}"')
     print(f"   Playable URL  : /media/{downloaded_mp4.name}")
     return 0

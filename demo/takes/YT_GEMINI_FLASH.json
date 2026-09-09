@@ -1,0 +1,2072 @@
+{
+  "project_id": "demo",
+  "takes": [
+    {
+      "take_id": "YT_GEMINI_FLASH",
+      "scene": "YT",
+      "camera": "A",
+      "speaker": "PRESENTER",
+      "source_url": "YT_GEMINI_FLASH.mp4",
+      "lines": [
+        {
+          "line_id": 1,
+          "text": "Welcome back to the exchange.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Welcome",
+              "start_ms": 0,
+              "end_ms": 600,
+              "confidence": 0.6602
+            },
+            {
+              "word": "back",
+              "start_ms": 600,
+              "end_ms": 800,
+              "confidence": 0.9814
+            },
+            {
+              "word": "to",
+              "start_ms": 800,
+              "end_ms": 940,
+              "confidence": 0.9846
+            },
+            {
+              "word": "the",
+              "start_ms": 940,
+              "end_ms": 1040,
+              "confidence": 0.8518
+            },
+            {
+              "word": "exchange.",
+              "start_ms": 1040,
+              "end_ms": 1500,
+              "confidence": 0.4516
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 2,
+          "text": "Google shares around a four-month losing streak, which is the longest since 2015 matter",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Google",
+              "start_ms": 1920,
+              "end_ms": 2000,
+              "confidence": 0.9849
+            },
+            {
+              "word": "shares",
+              "start_ms": 2000,
+              "end_ms": 2300,
+              "confidence": 0.903
+            },
+            {
+              "word": "around",
+              "start_ms": 2300,
+              "end_ms": 2680,
+              "confidence": 0.7105
+            },
+            {
+              "word": "a",
+              "start_ms": 2680,
+              "end_ms": 2780,
+              "confidence": 0.8999
+            },
+            {
+              "word": "four",
+              "start_ms": 2780,
+              "end_ms": 3100,
+              "confidence": 0.7138
+            },
+            {
+              "word": "-month",
+              "start_ms": 3100,
+              "end_ms": 3440,
+              "confidence": 0.7454
+            },
+            {
+              "word": "losing",
+              "start_ms": 3440,
+              "end_ms": 3880,
+              "confidence": 0.6827
+            },
+            {
+              "word": "streak,",
+              "start_ms": 3880,
+              "end_ms": 4260,
+              "confidence": 0.8839
+            },
+            {
+              "word": "which",
+              "start_ms": 4380,
+              "end_ms": 4480,
+              "confidence": 0.9771
+            },
+            {
+              "word": "is",
+              "start_ms": 4480,
+              "end_ms": 4560,
+              "confidence": 0.963
+            },
+            {
+              "word": "the",
+              "start_ms": 4560,
+              "end_ms": 4720,
+              "confidence": 0.9822
+            },
+            {
+              "word": "longest",
+              "start_ms": 4720,
+              "end_ms": 5000,
+              "confidence": 0.992
+            },
+            {
+              "word": "since",
+              "start_ms": 5000,
+              "end_ms": 5200,
+              "confidence": 0.9959
+            },
+            {
+              "word": "2015",
+              "start_ms": 5200,
+              "end_ms": 5880,
+              "confidence": 0.9941
+            },
+            {
+              "word": "matter",
+              "start_ms": 5880,
+              "end_ms": 6180,
+              "confidence": 0.8955
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 3,
+          "text": "of fact, as the company has faced some model setbacks and talent departures.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "of",
+              "start_ms": 6180,
+              "end_ms": 6340,
+              "confidence": 0.459
+            },
+            {
+              "word": "fact,",
+              "start_ms": 6340,
+              "end_ms": 6620,
+              "confidence": 0.998
+            },
+            {
+              "word": "as",
+              "start_ms": 6780,
+              "end_ms": 7000,
+              "confidence": 0.9842
+            },
+            {
+              "word": "the",
+              "start_ms": 7000,
+              "end_ms": 7080,
+              "confidence": 0.9944
+            },
+            {
+              "word": "company",
+              "start_ms": 7080,
+              "end_ms": 7380,
+              "confidence": 0.9981
+            },
+            {
+              "word": "has",
+              "start_ms": 7380,
+              "end_ms": 7620,
+              "confidence": 0.9952
+            },
+            {
+              "word": "faced",
+              "start_ms": 7620,
+              "end_ms": 7760,
+              "confidence": 0.9376
+            },
+            {
+              "word": "some",
+              "start_ms": 7760,
+              "end_ms": 8040,
+              "confidence": 0.9741
+            },
+            {
+              "word": "model",
+              "start_ms": 8040,
+              "end_ms": 8320,
+              "confidence": 0.8957
+            },
+            {
+              "word": "setbacks",
+              "start_ms": 8320,
+              "end_ms": 8860,
+              "confidence": 0.8266
+            },
+            {
+              "word": "and",
+              "start_ms": 8860,
+              "end_ms": 9100,
+              "confidence": 0.8761
+            },
+            {
+              "word": "talent",
+              "start_ms": 9100,
+              "end_ms": 9400,
+              "confidence": 0.8047
+            },
+            {
+              "word": "departures.",
+              "start_ms": 9400,
+              "end_ms": 10100,
+              "confidence": 0.9784
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 4,
+          "text": "But now they're releasing their new model, Gemini 3.8 Flash today.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "But",
+              "start_ms": 10400,
+              "end_ms": 10500,
+              "confidence": 0.9713
+            },
+            {
+              "word": "now",
+              "start_ms": 10500,
+              "end_ms": 10800,
+              "confidence": 0.9809
+            },
+            {
+              "word": "they're",
+              "start_ms": 10800,
+              "end_ms": 11160,
+              "confidence": 0.877
+            },
+            {
+              "word": "releasing",
+              "start_ms": 11160,
+              "end_ms": 11600,
+              "confidence": 0.9933
+            },
+            {
+              "word": "their",
+              "start_ms": 11600,
+              "end_ms": 11940,
+              "confidence": 0.9864
+            },
+            {
+              "word": "new",
+              "start_ms": 11940,
+              "end_ms": 12240,
+              "confidence": 0.99
+            },
+            {
+              "word": "model,",
+              "start_ms": 12240,
+              "end_ms": 12680,
+              "confidence": 0.992
+            },
+            {
+              "word": "Gemini",
+              "start_ms": 12900,
+              "end_ms": 13200,
+              "confidence": 0.971
+            },
+            {
+              "word": "3",
+              "start_ms": 13200,
+              "end_ms": 13660,
+              "confidence": 0.9021
+            },
+            {
+              "word": ".8",
+              "start_ms": 13660,
+              "end_ms": 14180,
+              "confidence": 0.9977
+            },
+            {
+              "word": "Flash",
+              "start_ms": 14180,
+              "end_ms": 14500,
+              "confidence": 0.6977
+            },
+            {
+              "word": "today.",
+              "start_ms": 14500,
+              "end_ms": 14880,
+              "confidence": 0.8657
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 5,
+          "text": "Will this be enough to reset the narrative?",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Will",
+              "start_ms": 15180,
+              "end_ms": 15320,
+              "confidence": 0.9757
+            },
+            {
+              "word": "this",
+              "start_ms": 15320,
+              "end_ms": 15460,
+              "confidence": 0.9734
+            },
+            {
+              "word": "be",
+              "start_ms": 15460,
+              "end_ms": 15600,
+              "confidence": 0.9941
+            },
+            {
+              "word": "enough",
+              "start_ms": 15600,
+              "end_ms": 15820,
+              "confidence": 0.9997
+            },
+            {
+              "word": "to",
+              "start_ms": 15820,
+              "end_ms": 16200,
+              "confidence": 0.8023
+            },
+            {
+              "word": "reset",
+              "start_ms": 16200,
+              "end_ms": 16420,
+              "confidence": 0.7898
+            },
+            {
+              "word": "the",
+              "start_ms": 16420,
+              "end_ms": 16620,
+              "confidence": 0.992
+            },
+            {
+              "word": "narrative?",
+              "start_ms": 16620,
+              "end_ms": 16880,
+              "confidence": 0.9972
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 6,
+          "text": "Mackenzie Zagallos says more.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Mackenzie",
+              "start_ms": 17040,
+              "end_ms": 17320,
+              "confidence": 0.6757
+            },
+            {
+              "word": "Zagallos",
+              "start_ms": 17320,
+              "end_ms": 17840,
+              "confidence": 0.3574
+            },
+            {
+              "word": "says",
+              "start_ms": 17840,
+              "end_ms": 18080,
+              "confidence": 0.43
+            },
+            {
+              "word": "more.",
+              "start_ms": 18080,
+              "end_ms": 18360,
+              "confidence": 0.9959
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 7,
+          "text": "And today's tech check, Mac, what can you tell us?",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "And",
+              "start_ms": 18600,
+              "end_ms": 18640,
+              "confidence": 0.6658
+            },
+            {
+              "word": "today's",
+              "start_ms": 18640,
+              "end_ms": 19000,
+              "confidence": 0.9704
+            },
+            {
+              "word": "tech",
+              "start_ms": 19000,
+              "end_ms": 19200,
+              "confidence": 0.4271
+            },
+            {
+              "word": "check,",
+              "start_ms": 19200,
+              "end_ms": 19360,
+              "confidence": 0.8
+            },
+            {
+              "word": "Mac,",
+              "start_ms": 19520,
+              "end_ms": 19600,
+              "confidence": 0.4724
+            },
+            {
+              "word": "what",
+              "start_ms": 19760,
+              "end_ms": 19820,
+              "confidence": 0.982
+            },
+            {
+              "word": "can",
+              "start_ms": 19820,
+              "end_ms": 19960,
+              "confidence": 0.9987
+            },
+            {
+              "word": "you",
+              "start_ms": 19960,
+              "end_ms": 20060,
+              "confidence": 0.9975
+            },
+            {
+              "word": "tell",
+              "start_ms": 20060,
+              "end_ms": 20220,
+              "confidence": 0.9992
+            },
+            {
+              "word": "us?",
+              "start_ms": 20220,
+              "end_ms": 20520,
+              "confidence": 0.9989
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 8,
+          "text": "So Kelly, coding has become one of the most important commercial backgrounds.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "So",
+              "start_ms": 21200,
+              "end_ms": 21420,
+              "confidence": 0.6394
+            },
+            {
+              "word": "Kelly,",
+              "start_ms": 21420,
+              "end_ms": 21660,
+              "confidence": 0.2281
+            },
+            {
+              "word": "coding",
+              "start_ms": 21800,
+              "end_ms": 21980,
+              "confidence": 0.8024
+            },
+            {
+              "word": "has",
+              "start_ms": 21980,
+              "end_ms": 22160,
+              "confidence": 0.9978
+            },
+            {
+              "word": "become",
+              "start_ms": 22160,
+              "end_ms": 22460,
+              "confidence": 0.9965
+            },
+            {
+              "word": "one",
+              "start_ms": 22460,
+              "end_ms": 22720,
+              "confidence": 0.9978
+            },
+            {
+              "word": "of",
+              "start_ms": 22720,
+              "end_ms": 22800,
+              "confidence": 0.9971
+            },
+            {
+              "word": "the",
+              "start_ms": 22800,
+              "end_ms": 23000,
+              "confidence": 0.9988
+            },
+            {
+              "word": "most",
+              "start_ms": 23000,
+              "end_ms": 23300,
+              "confidence": 0.9986
+            },
+            {
+              "word": "important",
+              "start_ms": 23300,
+              "end_ms": 23820,
+              "confidence": 0.9972
+            },
+            {
+              "word": "commercial",
+              "start_ms": 23820,
+              "end_ms": 24200,
+              "confidence": 0.993
+            },
+            {
+              "word": "backgrounds.",
+              "start_ms": 24200,
+              "end_ms": 24860,
+              "confidence": 0.9852
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 9,
+          "text": "Battlegrounds, rather an AI, and Google is trying to get back into that fight.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Battlegrounds,",
+              "start_ms": 25420,
+              "end_ms": 25920,
+              "confidence": 0.9058
+            },
+            {
+              "word": "rather",
+              "start_ms": 25940,
+              "end_ms": 26100,
+              "confidence": 0.9956
+            },
+            {
+              "word": "an",
+              "start_ms": 26100,
+              "end_ms": 26280,
+              "confidence": 0.9085
+            },
+            {
+              "word": "AI,",
+              "start_ms": 26280,
+              "end_ms": 26540,
+              "confidence": 0.9591
+            },
+            {
+              "word": "and",
+              "start_ms": 26760,
+              "end_ms": 26800,
+              "confidence": 0.9958
+            },
+            {
+              "word": "Google",
+              "start_ms": 26760,
+              "end_ms": 27020,
+              "confidence": 0.9924
+            },
+            {
+              "word": "is",
+              "start_ms": 27020,
+              "end_ms": 27240,
+              "confidence": 0.9668
+            },
+            {
+              "word": "trying",
+              "start_ms": 27240,
+              "end_ms": 27580,
+              "confidence": 0.9967
+            },
+            {
+              "word": "to",
+              "start_ms": 27580,
+              "end_ms": 27740,
+              "confidence": 0.9958
+            },
+            {
+              "word": "get",
+              "start_ms": 27740,
+              "end_ms": 27860,
+              "confidence": 0.9969
+            },
+            {
+              "word": "back",
+              "start_ms": 27860,
+              "end_ms": 28140,
+              "confidence": 0.995
+            },
+            {
+              "word": "into",
+              "start_ms": 28140,
+              "end_ms": 28520,
+              "confidence": 0.9934
+            },
+            {
+              "word": "that",
+              "start_ms": 28520,
+              "end_ms": 28720,
+              "confidence": 0.9778
+            },
+            {
+              "word": "fight.",
+              "start_ms": 28720,
+              "end_ms": 28980,
+              "confidence": 0.9652
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 10,
+          "text": "Gemini 3.8 Flash is Google's third Flash release in six weeks.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Gemini",
+              "start_ms": 28980,
+              "end_ms": 29440,
+              "confidence": 0.8289
+            },
+            {
+              "word": "3",
+              "start_ms": 29440,
+              "end_ms": 29720,
+              "confidence": 0.8702
+            },
+            {
+              "word": ".8",
+              "start_ms": 29720,
+              "end_ms": 30040,
+              "confidence": 0.5278
+            },
+            {
+              "word": "Flash",
+              "start_ms": 30040,
+              "end_ms": 30300,
+              "confidence": 0.8356
+            },
+            {
+              "word": "is",
+              "start_ms": 30300,
+              "end_ms": 30560,
+              "confidence": 0.9194
+            },
+            {
+              "word": "Google's",
+              "start_ms": 30560,
+              "end_ms": 31040,
+              "confidence": 0.9607
+            },
+            {
+              "word": "third",
+              "start_ms": 31040,
+              "end_ms": 31300,
+              "confidence": 0.9083
+            },
+            {
+              "word": "Flash",
+              "start_ms": 31300,
+              "end_ms": 31640,
+              "confidence": 0.6496
+            },
+            {
+              "word": "release",
+              "start_ms": 31640,
+              "end_ms": 31940,
+              "confidence": 0.9609
+            },
+            {
+              "word": "in",
+              "start_ms": 31940,
+              "end_ms": 32220,
+              "confidence": 0.9635
+            },
+            {
+              "word": "six",
+              "start_ms": 32220,
+              "end_ms": 32500,
+              "confidence": 0.6254
+            },
+            {
+              "word": "weeks.",
+              "start_ms": 32500,
+              "end_ms": 32740,
+              "confidence": 0.9925
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 11,
+          "text": "And the company calls it its best reasoning and coding model, yet approaching much larger",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "And",
+              "start_ms": 33180,
+              "end_ms": 33240,
+              "confidence": 0.6104
+            },
+            {
+              "word": "the",
+              "start_ms": 33240,
+              "end_ms": 33340,
+              "confidence": 0.9674
+            },
+            {
+              "word": "company",
+              "start_ms": 33340,
+              "end_ms": 33560,
+              "confidence": 0.9964
+            },
+            {
+              "word": "calls",
+              "start_ms": 33560,
+              "end_ms": 33900,
+              "confidence": 0.9776
+            },
+            {
+              "word": "it",
+              "start_ms": 33900,
+              "end_ms": 34100,
+              "confidence": 0.9933
+            },
+            {
+              "word": "its",
+              "start_ms": 34100,
+              "end_ms": 34380,
+              "confidence": 0.444
+            },
+            {
+              "word": "best",
+              "start_ms": 34380,
+              "end_ms": 34640,
+              "confidence": 0.9059
+            },
+            {
+              "word": "reasoning",
+              "start_ms": 34640,
+              "end_ms": 35220,
+              "confidence": 0.8117
+            },
+            {
+              "word": "and",
+              "start_ms": 35220,
+              "end_ms": 35580,
+              "confidence": 0.9595
+            },
+            {
+              "word": "coding",
+              "start_ms": 35580,
+              "end_ms": 36000,
+              "confidence": 0.9267
+            },
+            {
+              "word": "model,",
+              "start_ms": 36000,
+              "end_ms": 36440,
+              "confidence": 0.9883
+            },
+            {
+              "word": "yet",
+              "start_ms": 36600,
+              "end_ms": 36700,
+              "confidence": 0.9355
+            },
+            {
+              "word": "approaching",
+              "start_ms": 36700,
+              "end_ms": 37200,
+              "confidence": 0.968
+            },
+            {
+              "word": "much",
+              "start_ms": 37200,
+              "end_ms": 37540,
+              "confidence": 0.9593
+            },
+            {
+              "word": "larger",
+              "start_ms": 37540,
+              "end_ms": 37860,
+              "confidence": 0.9905
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 12,
+          "text": "frontier models on performance benchmarks at a fraction of the cost.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "frontier",
+              "start_ms": 37860,
+              "end_ms": 38240,
+              "confidence": 0.9808
+            },
+            {
+              "word": "models",
+              "start_ms": 38240,
+              "end_ms": 38660,
+              "confidence": 0.9976
+            },
+            {
+              "word": "on",
+              "start_ms": 38660,
+              "end_ms": 39120,
+              "confidence": 0.8414
+            },
+            {
+              "word": "performance",
+              "start_ms": 39120,
+              "end_ms": 39560,
+              "confidence": 0.9603
+            },
+            {
+              "word": "benchmarks",
+              "start_ms": 39560,
+              "end_ms": 40060,
+              "confidence": 0.9955
+            },
+            {
+              "word": "at",
+              "start_ms": 40060,
+              "end_ms": 40600,
+              "confidence": 0.5273
+            },
+            {
+              "word": "a",
+              "start_ms": 40600,
+              "end_ms": 40680,
+              "confidence": 0.9792
+            },
+            {
+              "word": "fraction",
+              "start_ms": 40680,
+              "end_ms": 41040,
+              "confidence": 0.9962
+            },
+            {
+              "word": "of",
+              "start_ms": 41040,
+              "end_ms": 41380,
+              "confidence": 0.9769
+            },
+            {
+              "word": "the",
+              "start_ms": 41380,
+              "end_ms": 41560,
+              "confidence": 0.9657
+            },
+            {
+              "word": "cost.",
+              "start_ms": 41560,
+              "end_ms": 41860,
+              "confidence": 0.9946
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 13,
+          "text": "Google also releasing a cyber version with access limited to a small group of trusted government",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Google",
+              "start_ms": 42280,
+              "end_ms": 42400,
+              "confidence": 0.9859
+            },
+            {
+              "word": "also",
+              "start_ms": 42400,
+              "end_ms": 42860,
+              "confidence": 0.9657
+            },
+            {
+              "word": "releasing",
+              "start_ms": 42860,
+              "end_ms": 43300,
+              "confidence": 0.8576
+            },
+            {
+              "word": "a",
+              "start_ms": 43300,
+              "end_ms": 43820,
+              "confidence": 0.9937
+            },
+            {
+              "word": "cyber",
+              "start_ms": 43820,
+              "end_ms": 44300,
+              "confidence": 0.9482
+            },
+            {
+              "word": "version",
+              "start_ms": 44300,
+              "end_ms": 44680,
+              "confidence": 0.6521
+            },
+            {
+              "word": "with",
+              "start_ms": 44680,
+              "end_ms": 44860,
+              "confidence": 0.8176
+            },
+            {
+              "word": "access",
+              "start_ms": 44860,
+              "end_ms": 45160,
+              "confidence": 0.9708
+            },
+            {
+              "word": "limited",
+              "start_ms": 45160,
+              "end_ms": 45480,
+              "confidence": 0.9523
+            },
+            {
+              "word": "to",
+              "start_ms": 45480,
+              "end_ms": 45700,
+              "confidence": 0.9924
+            },
+            {
+              "word": "a",
+              "start_ms": 45700,
+              "end_ms": 45760,
+              "confidence": 0.9759
+            },
+            {
+              "word": "small",
+              "start_ms": 45760,
+              "end_ms": 45980,
+              "confidence": 0.9969
+            },
+            {
+              "word": "group",
+              "start_ms": 45980,
+              "end_ms": 46300,
+              "confidence": 0.9977
+            },
+            {
+              "word": "of",
+              "start_ms": 46300,
+              "end_ms": 46760,
+              "confidence": 0.9866
+            },
+            {
+              "word": "trusted",
+              "start_ms": 46760,
+              "end_ms": 47120,
+              "confidence": 0.9845
+            },
+            {
+              "word": "government",
+              "start_ms": 47120,
+              "end_ms": 47660,
+              "confidence": 0.9888
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 14,
+          "text": "and enterprise defenders around 40 names on that list from what I'm told.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "and",
+              "start_ms": 47660,
+              "end_ms": 47860,
+              "confidence": 0.9512
+            },
+            {
+              "word": "enterprise",
+              "start_ms": 47860,
+              "end_ms": 48260,
+              "confidence": 0.986
+            },
+            {
+              "word": "defenders",
+              "start_ms": 48260,
+              "end_ms": 48920,
+              "confidence": 0.9624
+            },
+            {
+              "word": "around",
+              "start_ms": 48920,
+              "end_ms": 49180,
+              "confidence": 0.9429
+            },
+            {
+              "word": "40",
+              "start_ms": 49180,
+              "end_ms": 49560,
+              "confidence": 0.9285
+            },
+            {
+              "word": "names",
+              "start_ms": 49560,
+              "end_ms": 49860,
+              "confidence": 0.9867
+            },
+            {
+              "word": "on",
+              "start_ms": 49860,
+              "end_ms": 50040,
+              "confidence": 0.9094
+            },
+            {
+              "word": "that",
+              "start_ms": 50040,
+              "end_ms": 50180,
+              "confidence": 0.8402
+            },
+            {
+              "word": "list",
+              "start_ms": 50180,
+              "end_ms": 50380,
+              "confidence": 0.9986
+            },
+            {
+              "word": "from",
+              "start_ms": 50380,
+              "end_ms": 50580,
+              "confidence": 0.7199
+            },
+            {
+              "word": "what",
+              "start_ms": 50580,
+              "end_ms": 50700,
+              "confidence": 0.9915
+            },
+            {
+              "word": "I'm",
+              "start_ms": 50700,
+              "end_ms": 50860,
+              "confidence": 0.9427
+            },
+            {
+              "word": "told.",
+              "start_ms": 50860,
+              "end_ms": 51120,
+              "confidence": 0.9898
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 15,
+          "text": "Now the company needs these releases to do well.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Now",
+              "start_ms": 51700,
+              "end_ms": 51760,
+              "confidence": 0.7253
+            },
+            {
+              "word": "the",
+              "start_ms": 51760,
+              "end_ms": 51840,
+              "confidence": 0.7918
+            },
+            {
+              "word": "company",
+              "start_ms": 51840,
+              "end_ms": 52100,
+              "confidence": 0.9969
+            },
+            {
+              "word": "needs",
+              "start_ms": 52100,
+              "end_ms": 52620,
+              "confidence": 0.9251
+            },
+            {
+              "word": "these",
+              "start_ms": 52620,
+              "end_ms": 52860,
+              "confidence": 0.9791
+            },
+            {
+              "word": "releases",
+              "start_ms": 52860,
+              "end_ms": 53280,
+              "confidence": 0.9914
+            },
+            {
+              "word": "to",
+              "start_ms": 53280,
+              "end_ms": 53520,
+              "confidence": 0.9852
+            },
+            {
+              "word": "do",
+              "start_ms": 53520,
+              "end_ms": 53640,
+              "confidence": 0.9928
+            },
+            {
+              "word": "well.",
+              "start_ms": 53640,
+              "end_ms": 53880,
+              "confidence": 0.9926
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 16,
+          "text": "Nine months ago, Gemini 3 put Google at the top of the leaderboard, and then, yet anthropic,",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Nine",
+              "start_ms": 53880,
+              "end_ms": 54260,
+              "confidence": 0.0427
+            },
+            {
+              "word": "months",
+              "start_ms": 54260,
+              "end_ms": 54560,
+              "confidence": 0.9598
+            },
+            {
+              "word": "ago,",
+              "start_ms": 54560,
+              "end_ms": 54900,
+              "confidence": 0.9892
+            },
+            {
+              "word": "Gemini",
+              "start_ms": 55060,
+              "end_ms": 55400,
+              "confidence": 0.9687
+            },
+            {
+              "word": "3",
+              "start_ms": 55400,
+              "end_ms": 55800,
+              "confidence": 0.714
+            },
+            {
+              "word": "put",
+              "start_ms": 55800,
+              "end_ms": 56100,
+              "confidence": 0.9864
+            },
+            {
+              "word": "Google",
+              "start_ms": 56100,
+              "end_ms": 56420,
+              "confidence": 0.9791
+            },
+            {
+              "word": "at",
+              "start_ms": 56420,
+              "end_ms": 56680,
+              "confidence": 0.9626
+            },
+            {
+              "word": "the",
+              "start_ms": 56680,
+              "end_ms": 56800,
+              "confidence": 0.9625
+            },
+            {
+              "word": "top",
+              "start_ms": 56800,
+              "end_ms": 57180,
+              "confidence": 0.9914
+            },
+            {
+              "word": "of",
+              "start_ms": 57180,
+              "end_ms": 57400,
+              "confidence": 0.9717
+            },
+            {
+              "word": "the",
+              "start_ms": 57400,
+              "end_ms": 57540,
+              "confidence": 0.9418
+            },
+            {
+              "word": "leaderboard,",
+              "start_ms": 57540,
+              "end_ms": 58060,
+              "confidence": 0.8053
+            },
+            {
+              "word": "and",
+              "start_ms": 58280,
+              "end_ms": 58320,
+              "confidence": 0.948
+            },
+            {
+              "word": "then,",
+              "start_ms": 58280,
+              "end_ms": 58540,
+              "confidence": 0.915
+            },
+            {
+              "word": "yet",
+              "start_ms": 58960,
+              "end_ms": 59200,
+              "confidence": 0.8061
+            },
+            {
+              "word": "anthropic,",
+              "start_ms": 59200,
+              "end_ms": 59860,
+              "confidence": 0.6515
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 17,
+          "text": "take much of that momentum.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "take",
+              "start_ms": 59920,
+              "end_ms": 60020,
+              "confidence": 0.8974
+            },
+            {
+              "word": "much",
+              "start_ms": 60020,
+              "end_ms": 60260,
+              "confidence": 0.8743
+            },
+            {
+              "word": "of",
+              "start_ms": 60260,
+              "end_ms": 60340,
+              "confidence": 0.9741
+            },
+            {
+              "word": "that",
+              "start_ms": 60340,
+              "end_ms": 60480,
+              "confidence": 0.9484
+            },
+            {
+              "word": "momentum.",
+              "start_ms": 60480,
+              "end_ms": 60860,
+              "confidence": 0.6525
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 18,
+          "text": "We're still waiting for Gemini 4, what would be the real step change at the frontier, but",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "We're",
+              "start_ms": 61100,
+              "end_ms": 61280,
+              "confidence": 0.9359
+            },
+            {
+              "word": "still",
+              "start_ms": 61280,
+              "end_ms": 61460,
+              "confidence": 0.9604
+            },
+            {
+              "word": "waiting",
+              "start_ms": 61460,
+              "end_ms": 61720,
+              "confidence": 0.9962
+            },
+            {
+              "word": "for",
+              "start_ms": 61720,
+              "end_ms": 61880,
+              "confidence": 0.9964
+            },
+            {
+              "word": "Gemini",
+              "start_ms": 61880,
+              "end_ms": 62220,
+              "confidence": 0.9937
+            },
+            {
+              "word": "4,",
+              "start_ms": 62220,
+              "end_ms": 62580,
+              "confidence": 0.8576
+            },
+            {
+              "word": "what",
+              "start_ms": 62740,
+              "end_ms": 62840,
+              "confidence": 0.9258
+            },
+            {
+              "word": "would",
+              "start_ms": 62840,
+              "end_ms": 63040,
+              "confidence": 0.9804
+            },
+            {
+              "word": "be",
+              "start_ms": 63040,
+              "end_ms": 63280,
+              "confidence": 0.9699
+            },
+            {
+              "word": "the",
+              "start_ms": 63280,
+              "end_ms": 63440,
+              "confidence": 0.98
+            },
+            {
+              "word": "real",
+              "start_ms": 63440,
+              "end_ms": 63640,
+              "confidence": 0.9931
+            },
+            {
+              "word": "step",
+              "start_ms": 63640,
+              "end_ms": 63920,
+              "confidence": 0.983
+            },
+            {
+              "word": "change",
+              "start_ms": 63920,
+              "end_ms": 64400,
+              "confidence": 0.9094
+            },
+            {
+              "word": "at",
+              "start_ms": 64400,
+              "end_ms": 64820,
+              "confidence": 0.7989
+            },
+            {
+              "word": "the",
+              "start_ms": 64820,
+              "end_ms": 64960,
+              "confidence": 0.9896
+            },
+            {
+              "word": "frontier,",
+              "start_ms": 64960,
+              "end_ms": 65300,
+              "confidence": 0.9682
+            },
+            {
+              "word": "but",
+              "start_ms": 65300,
+              "end_ms": 65580,
+              "confidence": 0.9799
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 19,
+          "text": "in the meantime, Google is leaning into Flash, the smaller models that are faster to ship,",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "in",
+              "start_ms": 65580,
+              "end_ms": 65680,
+              "confidence": 0.9652
+            },
+            {
+              "word": "the",
+              "start_ms": 65680,
+              "end_ms": 65760,
+              "confidence": 0.9979
+            },
+            {
+              "word": "meantime,",
+              "start_ms": 65760,
+              "end_ms": 66240,
+              "confidence": 0.869
+            },
+            {
+              "word": "Google",
+              "start_ms": 66800,
+              "end_ms": 66980,
+              "confidence": 0.9788
+            },
+            {
+              "word": "is",
+              "start_ms": 66980,
+              "end_ms": 67240,
+              "confidence": 0.9877
+            },
+            {
+              "word": "leaning",
+              "start_ms": 67240,
+              "end_ms": 67440,
+              "confidence": 0.9915
+            },
+            {
+              "word": "into",
+              "start_ms": 67440,
+              "end_ms": 67920,
+              "confidence": 0.9722
+            },
+            {
+              "word": "Flash,",
+              "start_ms": 67920,
+              "end_ms": 68340,
+              "confidence": 0.5369
+            },
+            {
+              "word": "the",
+              "start_ms": 68540,
+              "end_ms": 68600,
+              "confidence": 0.5524
+            },
+            {
+              "word": "smaller",
+              "start_ms": 68600,
+              "end_ms": 69000,
+              "confidence": 0.9955
+            },
+            {
+              "word": "models",
+              "start_ms": 69000,
+              "end_ms": 69440,
+              "confidence": 0.995
+            },
+            {
+              "word": "that",
+              "start_ms": 69440,
+              "end_ms": 69620,
+              "confidence": 0.9578
+            },
+            {
+              "word": "are",
+              "start_ms": 69620,
+              "end_ms": 69700,
+              "confidence": 0.9956
+            },
+            {
+              "word": "faster",
+              "start_ms": 69700,
+              "end_ms": 69980,
+              "confidence": 0.9954
+            },
+            {
+              "word": "to",
+              "start_ms": 69980,
+              "end_ms": 70260,
+              "confidence": 0.9908
+            },
+            {
+              "word": "ship,",
+              "start_ms": 70260,
+              "end_ms": 70480,
+              "confidence": 0.8715
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 20,
+          "text": "and costless, and that may be where the market is headed.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "and",
+              "start_ms": 70920,
+              "end_ms": 71000,
+              "confidence": 0.9853
+            },
+            {
+              "word": "costless,",
+              "start_ms": 71000,
+              "end_ms": 71600,
+              "confidence": 0.6654
+            },
+            {
+              "word": "and",
+              "start_ms": 71720,
+              "end_ms": 71800,
+              "confidence": 0.981
+            },
+            {
+              "word": "that",
+              "start_ms": 71800,
+              "end_ms": 71960,
+              "confidence": 0.9788
+            },
+            {
+              "word": "may",
+              "start_ms": 71960,
+              "end_ms": 72240,
+              "confidence": 0.8973
+            },
+            {
+              "word": "be",
+              "start_ms": 72240,
+              "end_ms": 72440,
+              "confidence": 0.9872
+            },
+            {
+              "word": "where",
+              "start_ms": 72440,
+              "end_ms": 72640,
+              "confidence": 0.9972
+            },
+            {
+              "word": "the",
+              "start_ms": 72640,
+              "end_ms": 72780,
+              "confidence": 0.9893
+            },
+            {
+              "word": "market",
+              "start_ms": 72780,
+              "end_ms": 73060,
+              "confidence": 0.998
+            },
+            {
+              "word": "is",
+              "start_ms": 73060,
+              "end_ms": 73340,
+              "confidence": 0.9854
+            },
+            {
+              "word": "headed.",
+              "start_ms": 73340,
+              "end_ms": 73640,
+              "confidence": 0.9927
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 21,
+          "text": "Token prices are at record lows.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Token",
+              "start_ms": 74060,
+              "end_ms": 74220,
+              "confidence": 0.7494
+            },
+            {
+              "word": "prices",
+              "start_ms": 74220,
+              "end_ms": 74540,
+              "confidence": 0.959
+            },
+            {
+              "word": "are",
+              "start_ms": 74540,
+              "end_ms": 74840,
+              "confidence": 0.8546
+            },
+            {
+              "word": "at",
+              "start_ms": 74840,
+              "end_ms": 74940,
+              "confidence": 0.9048
+            },
+            {
+              "word": "record",
+              "start_ms": 74940,
+              "end_ms": 75180,
+              "confidence": 0.9891
+            },
+            {
+              "word": "lows.",
+              "start_ms": 75180,
+              "end_ms": 75460,
+              "confidence": 0.9684
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 22,
+          "text": "Even anthropic is now touting that its latest model is almost 50 percent cheaper on",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "Even",
+              "start_ms": 75620,
+              "end_ms": 75780,
+              "confidence": 0.9774
+            },
+            {
+              "word": "anthropic",
+              "start_ms": 75780,
+              "end_ms": 76420,
+              "confidence": 0.8339
+            },
+            {
+              "word": "is",
+              "start_ms": 76420,
+              "end_ms": 76560,
+              "confidence": 0.9807
+            },
+            {
+              "word": "now",
+              "start_ms": 76560,
+              "end_ms": 76740,
+              "confidence": 0.9904
+            },
+            {
+              "word": "touting",
+              "start_ms": 76740,
+              "end_ms": 77200,
+              "confidence": 0.9846
+            },
+            {
+              "word": "that",
+              "start_ms": 77200,
+              "end_ms": 77320,
+              "confidence": 0.7495
+            },
+            {
+              "word": "its",
+              "start_ms": 77320,
+              "end_ms": 77480,
+              "confidence": 0.5891
+            },
+            {
+              "word": "latest",
+              "start_ms": 77480,
+              "end_ms": 77700,
+              "confidence": 0.9953
+            },
+            {
+              "word": "model",
+              "start_ms": 77700,
+              "end_ms": 78220,
+              "confidence": 0.8103
+            },
+            {
+              "word": "is",
+              "start_ms": 78220,
+              "end_ms": 78420,
+              "confidence": 0.8041
+            },
+            {
+              "word": "almost",
+              "start_ms": 78420,
+              "end_ms": 78520,
+              "confidence": 0.6807
+            },
+            {
+              "word": "50",
+              "start_ms": 78520,
+              "end_ms": 78940,
+              "confidence": 0.9572
+            },
+            {
+              "word": "percent",
+              "start_ms": 78940,
+              "end_ms": 79320,
+              "confidence": 0.1801
+            },
+            {
+              "word": "cheaper",
+              "start_ms": 79320,
+              "end_ms": 79640,
+              "confidence": 0.9671
+            },
+            {
+              "word": "on",
+              "start_ms": 79640,
+              "end_ms": 79880,
+              "confidence": 0.9905
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 23,
+          "text": "genetic tests, but Google has more room to compete on price because its high margin",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "genetic",
+              "start_ms": 79880,
+              "end_ms": 80300,
+              "confidence": 0.0799
+            },
+            {
+              "word": "tests,",
+              "start_ms": 80300,
+              "end_ms": 80960,
+              "confidence": 0.3761
+            },
+            {
+              "word": "but",
+              "start_ms": 81320,
+              "end_ms": 81500,
+              "confidence": 0.9307
+            },
+            {
+              "word": "Google",
+              "start_ms": 81500,
+              "end_ms": 81720,
+              "confidence": 0.9877
+            },
+            {
+              "word": "has",
+              "start_ms": 81720,
+              "end_ms": 81940,
+              "confidence": 0.9829
+            },
+            {
+              "word": "more",
+              "start_ms": 81940,
+              "end_ms": 82120,
+              "confidence": 0.9863
+            },
+            {
+              "word": "room",
+              "start_ms": 82120,
+              "end_ms": 82340,
+              "confidence": 0.9966
+            },
+            {
+              "word": "to",
+              "start_ms": 82340,
+              "end_ms": 82480,
+              "confidence": 0.9941
+            },
+            {
+              "word": "compete",
+              "start_ms": 82480,
+              "end_ms": 82760,
+              "confidence": 0.9887
+            },
+            {
+              "word": "on",
+              "start_ms": 82760,
+              "end_ms": 83000,
+              "confidence": 0.9843
+            },
+            {
+              "word": "price",
+              "start_ms": 83000,
+              "end_ms": 83280,
+              "confidence": 0.934
+            },
+            {
+              "word": "because",
+              "start_ms": 83280,
+              "end_ms": 83840,
+              "confidence": 0.8471
+            },
+            {
+              "word": "its",
+              "start_ms": 83840,
+              "end_ms": 84040,
+              "confidence": 0.7258
+            },
+            {
+              "word": "high",
+              "start_ms": 84040,
+              "end_ms": 84260,
+              "confidence": 0.8945
+            },
+            {
+              "word": "margin",
+              "start_ms": 84260,
+              "end_ms": 84600,
+              "confidence": 0.7722
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 24,
+          "text": "ad business is helping subsidize its AI spend.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "ad",
+              "start_ms": 84600,
+              "end_ms": 84960,
+              "confidence": 0.9694
+            },
+            {
+              "word": "business",
+              "start_ms": 84960,
+              "end_ms": 85360,
+              "confidence": 0.9741
+            },
+            {
+              "word": "is",
+              "start_ms": 85360,
+              "end_ms": 85820,
+              "confidence": 0.986
+            },
+            {
+              "word": "helping",
+              "start_ms": 85820,
+              "end_ms": 86080,
+              "confidence": 0.9895
+            },
+            {
+              "word": "subsidize",
+              "start_ms": 86080,
+              "end_ms": 86840,
+              "confidence": 0.9828
+            },
+            {
+              "word": "its",
+              "start_ms": 86840,
+              "end_ms": 87020,
+              "confidence": 0.9616
+            },
+            {
+              "word": "AI",
+              "start_ms": 87020,
+              "end_ms": 87300,
+              "confidence": 0.8878
+            },
+            {
+              "word": "spend.",
+              "start_ms": 87300,
+              "end_ms": 87780,
+              "confidence": 0.9055
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 25,
+          "text": "That cash engine got more protection today, with a judge ruling in its antitrust case saying",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "That",
+              "start_ms": 88100,
+              "end_ms": 88280,
+              "confidence": 0.907
+            },
+            {
+              "word": "cash",
+              "start_ms": 88280,
+              "end_ms": 88580,
+              "confidence": 0.9104
+            },
+            {
+              "word": "engine",
+              "start_ms": 88580,
+              "end_ms": 88960,
+              "confidence": 0.9935
+            },
+            {
+              "word": "got",
+              "start_ms": 88960,
+              "end_ms": 89180,
+              "confidence": 0.9828
+            },
+            {
+              "word": "more",
+              "start_ms": 89180,
+              "end_ms": 89460,
+              "confidence": 0.9927
+            },
+            {
+              "word": "protection",
+              "start_ms": 89460,
+              "end_ms": 89840,
+              "confidence": 0.7257
+            },
+            {
+              "word": "today,",
+              "start_ms": 89840,
+              "end_ms": 90320,
+              "confidence": 0.9796
+            },
+            {
+              "word": "with",
+              "start_ms": 90660,
+              "end_ms": 90780,
+              "confidence": 0.9755
+            },
+            {
+              "word": "a",
+              "start_ms": 90780,
+              "end_ms": 90900,
+              "confidence": 0.6337
+            },
+            {
+              "word": "judge",
+              "start_ms": 90900,
+              "end_ms": 91080,
+              "confidence": 0.9742
+            },
+            {
+              "word": "ruling",
+              "start_ms": 91080,
+              "end_ms": 91480,
+              "confidence": 0.9812
+            },
+            {
+              "word": "in",
+              "start_ms": 91480,
+              "end_ms": 91700,
+              "confidence": 0.7668
+            },
+            {
+              "word": "its",
+              "start_ms": 91700,
+              "end_ms": 91880,
+              "confidence": 0.9606
+            },
+            {
+              "word": "antitrust",
+              "start_ms": 91880,
+              "end_ms": 92440,
+              "confidence": 0.8887
+            },
+            {
+              "word": "case",
+              "start_ms": 92440,
+              "end_ms": 92720,
+              "confidence": 0.9937
+            },
+            {
+              "word": "saying",
+              "start_ms": 92720,
+              "end_ms": 92960,
+              "confidence": 0.9571
+            }
+          ],
+          "tone_reason": "dry-run"
+        },
+        {
+          "line_id": 26,
+          "text": "that Google won't have to sell its ad exchange.",
+          "tone": "neutral",
+          "tone_score": 0.0,
+          "words": [
+            {
+              "word": "that",
+              "start_ms": 92960,
+              "end_ms": 93100,
+              "confidence": 0.9648
+            },
+            {
+              "word": "Google",
+              "start_ms": 93100,
+              "end_ms": 93360,
+              "confidence": 0.9716
+            },
+            {
+              "word": "won't",
+              "start_ms": 93360,
+              "end_ms": 94020,
+              "confidence": 0.9258
+            },
+            {
+              "word": "have",
+              "start_ms": 94020,
+              "end_ms": 94160,
+              "confidence": 0.9952
+            },
+            {
+              "word": "to",
+              "start_ms": 94160,
+              "end_ms": 94320,
+              "confidence": 0.9975
+            },
+            {
+              "word": "sell",
+              "start_ms": 94320,
+              "end_ms": 94560,
+              "confidence": 0.9976
+            },
+            {
+              "word": "its",
+              "start_ms": 94560,
+              "end_ms": 94840,
+              "confidence": 0.8908
+            },
+            {
+              "word": "ad",
+              "start_ms": 94840,
+              "end_ms": 95020,
+              "confidence": 0.909
+            },
+            {
+              "word": "exchange.",
+              "start_ms": 95020,
+              "end_ms": 95240,
+              "confidence": 0.9852
+            }
+          ],
+          "tone_reason": "dry-run"
+        }
+      ]
+    }
+  ]
+}

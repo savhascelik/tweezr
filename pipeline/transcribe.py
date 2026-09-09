@@ -88,12 +88,19 @@ def transcribe(
             text = word.word.strip()  # faster-whisper returns a leading space on words
             if not text:
                 continue
+            start_ms = int(round((word.start or 0.0) * 1000))
+            end_ms = int(round((word.end or 0.0) * 1000))
+            # faster-whisper can emit zero-length word timestamps for very fast tokens
+            # (e.g. 26760 -> 26760). Ensure every word has a strictly positive duration.
+            if end_ms <= start_ms:
+                end_ms = start_ms + 40
+
             words.append(
                 {
                     "word": text,
-                    "start_ms": int(round(word.start * 1000)),
-                    "end_ms": int(round(word.end * 1000)),
-                    "confidence": round(float(word.probability), 4),
+                    "start_ms": start_ms,
+                    "end_ms": end_ms,
+                    "confidence": round(float(word.probability or 0.0), 4),
                 }
             )
 
