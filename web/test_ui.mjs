@@ -745,9 +745,17 @@ console.log("\n=== the lists are not rebuilt every frame ===");
   // But the scrubber still follows, because that is a style write not a rebuild
   check("the scrubber still advances", firstByClass(root, "scrubber-fill").style.width, `${(16 / 2720) * 100}%`);
 
-  // Real changes must still rebuild
+  // Moving to the next segment updates active state without destroying or rebuilding blocks
   ui.render({ ...state, playback: { playing: true, index: 1, offsetMs: 0 } });
-  checkThat("moving to the next segment rebuilds", byClass(root, "block")[0] !== blockBefore);
+  checkThat("moving to the next segment preserves block DOM", byClass(root, "block")[0] === blockBefore);
+  checkThat(
+    "and activates the playing class on the second segment",
+    byClass(root, "block")[1].classList.contains("is-playing")
+  );
+  checkThat(
+    "while removing is-playing from the first segment",
+    !byClass(root, "block")[0].classList.contains("is-playing")
+  );
 
   const reordered = mount();
   reordered.ui.render(state);

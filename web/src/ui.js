@@ -1216,125 +1216,134 @@ export function createUI(root, handlers) {
     nodes.clearButton.disabled = !hasSegments;
     nodes.exportButton.disabled = !hasSegments;
 
-    // Which segments, in what order, which one is lit, and the language.
-    const litIndex = state.playback.playing ? state.playback.index : -1;
+    // Which segments, in what order, and the language.
+    // Active playback highlight is updated on the existing DOM blocks without rebuilding or reloading thumbnails.
     const signature = [
       getLocale(),
-      litIndex,
       timeline.map((segment) => segment.id).join("|"),
     ].join("\u0001");
-    if (signature === trackSignature) return;
-    trackSignature = signature;
 
-    nodes.blocks.replaceChildren();
+    const litIndex = state.playback.playing ? state.playback.index : -1;
 
-    timeline.forEach((segment, index) => {
-      const playing = state.playback.playing && state.playback.index === index;
+    if (signature !== trackSignature) {
+      trackSignature = signature;
+      nodes.blocks.replaceChildren();
 
-      const grip = el("button", {
-        type: "button",
-        class: "block-grip",
-        title: t("track.move"),
-        "aria-label": t("track.move"),
-        onKeyDown: (event) => {
-          // Reordering must not be pointer-only. Arrow keys on the grip move the block.
-          const delta =
-            event.key === "ArrowLeft" || event.key === "ArrowUp"
-              ? -1
-              : event.key === "ArrowRight" || event.key === "ArrowDown"
-                ? 1
-                : 0;
-          if (!delta) return;
-          event.preventDefault();
-          handlers.onReorder(index, index + delta);
-        },
-      }, [icon("grip", "icon-sm")]);
+      timeline.forEach((segment, index) => {
+        const playing = index === litIndex;
 
-      const remove = el("button", {
-        type: "button",
-        class: "block-remove",
-        title: t("track.remove"),
-        "aria-label": t("track.remove"),
-        onClick: () => handlers.onRemove(index),
-      }, [icon("close", "icon-sm")]);
-
-      const block = el(
-        "li",
-        {
-          class: playing ? "block is-playing" : "block",
-          draggable: "true",
-          onDragStart: (event) => {
-            dragFrom = index;
-            block.classList.add("is-dragging");
-            event.dataTransfer.effectAllowed = "move";
-            // Firefox refuses to start a drag without payload
-            event.dataTransfer.setData("text/plain", String(index));
-          },
-          onDragEnd: () => {
-            dragFrom = -1;
-            block.classList.remove("is-dragging");
-          },
-          onDragOver: (event) => {
-            if (dragFrom < 0) return;
-            event.preventDefault();
-            block.classList.add("is-drop-target");
-          },
-          onDragLeave: () => block.classList.remove("is-drop-target"),
-          onDrop: (event) => {
-            event.preventDefault();
-            block.classList.remove("is-drop-target");
-            if (dragFrom >= 0 && dragFrom !== index) handlers.onReorder(dragFrom, index);
-            dragFrom = -1;
-          },
-        },
-        [
-          el("div", { class: "block-head" }, [
-            el("span", {
-              class: "block-index",
-              text: String(index + 1).padStart(2, "0"),
-            }),
-            grip,
-          ]),
-          el("div", { class: "block-body" }, [
-            thumbnail(segment),
-            el("div", { class: "block-meta" }, [
-              el("span", { class: "block-take", text: segment.take_id }),
-              el("span", { class: "block-line", text: segment.text }),
-            ]),
-          ]),
-          el("div", { class: "block-foot" }, [
-            el("span", { class: `tone tone-${segment.tone}` }, [
-              el("span", {
-                text: TONE_GLYPH[segment.tone] ?? TONE_GLYPH.neutral,
-                "aria-hidden": "true",
-              }),
-              el("span", { text: seconds(segment.duration_ms) }),
-            ]),
-            remove,
-          ]),
-        ]
-      );
-
-      nodes.blocks.appendChild(block);
-    });
-
-    // The empty slot doubles as the empty state: there is always somewhere to start.
-    nodes.blocks.appendChild(
-      el("li", {}, [
-        el("button", {
+        const grip = el("button", {
           type: "button",
-          class: "block block-add",
-          onClick: () => {
-            nodes.phrase.focus();
-            nodes.phrase.select();
+          class: "block-grip",
+          title: t("track.move"),
+          "aria-label": t("track.move"),
+          onKeyDown: (event) => {
+            // Reordering must not be pointer-only. Arrow keys on the grip move the block.
+            const delta =
+              event.key === "ArrowLeft" || event.key === "ArrowUp"
+                ? -1
+                : event.key === "ArrowRight" || event.key === "ArrowDown"
+                  ? 1
+                  : 0;
+            if (!delta) return;
+            event.preventDefault();
+            handlers.onReorder(index, index + delta);
           },
-        }, [
-          el("span", { class: "block-add-mark" }, [icon("plus")]),
-          el("span", { class: "block-add-label", text: t("track.pluck") }),
-          el("span", { class: "block-add-note", text: t("track.pluckNote") }),
-        ]),
-      ])
-    );
+        }, [icon("grip", "icon-sm")]);
+
+        const remove = el("button", {
+          type: "button",
+          class: "block-remove",
+          title: t("track.remove"),
+          "aria-label": t("track.remove"),
+          onClick: () => handlers.onRemove(index),
+        }, [icon("close", "icon-sm")]);
+
+        const block = el(
+          "li",
+          {
+            class: playing ? "block is-playing" : "block",
+            draggable: "true",
+            onDragStart: (event) => {
+              dragFrom = index;
+              block.classList.add("is-dragging");
+              event.dataTransfer.effectAllowed = "move";
+              // Firefox refuses to start a drag without payload
+              event.dataTransfer.setData("text/plain", String(index));
+            },
+            onDragEnd: () => {
+              dragFrom = -1;
+              block.classList.remove("is-dragging");
+            },
+            onDragOver: (event) => {
+              if (dragFrom < 0) return;
+              event.preventDefault();
+              block.classList.add("is-drop-target");
+            },
+            onDragLeave: () => block.classList.remove("is-drop-target"),
+            onDrop: (event) => {
+              event.preventDefault();
+              block.classList.remove("is-drop-target");
+              if (dragFrom >= 0 && dragFrom !== index) handlers.onReorder(dragFrom, index);
+              dragFrom = -1;
+            },
+          },
+          [
+            el("div", { class: "block-head" }, [
+              el("span", {
+                class: "block-index",
+                text: String(index + 1).padStart(2, "0"),
+              }),
+              grip,
+            ]),
+            el("div", { class: "block-body" }, [
+              thumbnail(segment),
+              el("div", { class: "block-meta" }, [
+                el("span", { class: "block-take", text: segment.take_id }),
+                el("span", { class: "block-line", text: segment.text }),
+              ]),
+            ]),
+            el("div", { class: "block-foot" }, [
+              el("span", { class: `tone tone-${segment.tone}` }, [
+                el("span", {
+                  text: TONE_GLYPH[segment.tone] ?? TONE_GLYPH.neutral,
+                  "aria-hidden": "true",
+                }),
+                el("span", { text: seconds(segment.duration_ms) }),
+              ]),
+              remove,
+            ]),
+          ]
+        );
+
+        nodes.blocks.appendChild(block);
+      });
+
+      // The empty slot doubles as the empty state: there is always somewhere to start.
+      nodes.blocks.appendChild(
+        el("li", {}, [
+          el("button", {
+            type: "button",
+            class: "block block-add",
+            onClick: () => {
+              nodes.phrase.focus();
+              nodes.phrase.select();
+            },
+          }, [
+            el("span", { class: "block-add-mark" }, [icon("plus")]),
+            el("span", { class: "block-add-label", text: t("track.pluck") }),
+            el("span", { class: "block-add-note", text: t("track.pluckNote") }),
+          ]),
+        ])
+      );
+    } else {
+      timeline.forEach((_, index) => {
+        const block = nodes.blocks.children[index];
+        if (block) {
+          block.classList.toggle("is-playing", index === litIndex);
+        }
+      });
+    }
   }
 
   function renderStage(state) {

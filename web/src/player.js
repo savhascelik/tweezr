@@ -109,7 +109,6 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
     const positionMs = element.currentTime * 1000;
 
     if (positionMs >= segment.end_ms) {
-      element.pause();
       advance(myGeneration);
       return;
     }
@@ -130,16 +129,26 @@ export function createPlayer({ mount, onProgress, onSegmentChange, onEnd, onErro
       return;
     }
 
-    // The next element should already be positioned; the transition is just play()
-    activeIndex = 1 - activeIndex;
-    showActive();
-
+    const prevIndex = activeIndex;
+    const nextIndex = 1 - activeIndex;
+    const nextElement = elements[nextIndex];
+    const prevElement = elements[prevIndex];
     const segment = segments[cursor];
+
     try {
       // If preloading did not keep up we wait here: a gap, but never a skip
-      await prepare(active(), segment);
+      await prepare(nextElement, segment);
       if (myGeneration !== generation) return;
-      await active().play();
+      await nextElement.play();
+      if (myGeneration !== generation) {
+        nextElement.pause();
+        return;
+      }
+
+      // Smooth handoff: next element is actively playing, switch visibility and pause previous
+      activeIndex = nextIndex;
+      showActive();
+      prevElement.pause();
     } catch (error) {
       if (myGeneration === generation) onError?.(error);
       return;

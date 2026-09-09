@@ -1145,11 +1145,13 @@ ul {
   object-fit: contain;
   opacity: 0;
   pointer-events: none;
+  z-index: 0;
 }
 
-/* Double buffering: two elements alternate and only the active one is visible. */
+/* Double buffering: two elements alternate and only the active one is visible on top. */
 .stage-media.is-active {
   opacity: 1;
+  z-index: 1;
 }
 
 /* Audio-only takes have nothing to show. Rather than a black rectangle pretending to
